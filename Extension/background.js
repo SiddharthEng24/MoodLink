@@ -3,6 +3,22 @@ const API_ENDPOINT = 'http://localhost:8000/api/';
 
 // Take screenshot and send to API when extension icon is clicked
 chrome.action.onClicked.addListener(async (tab) => {
+  // First, inject the GUI script into the page
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ['GUI.js']
+  });
+  
+  // Show the GUI panel
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    function: () => {
+      if (typeof window.showMoodLinkPanel === 'function') {
+        window.showMoodLinkPanel();
+      }
+    }
+  });
+  
   // Capture the visible area of the current tab
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
     format: 'png',
