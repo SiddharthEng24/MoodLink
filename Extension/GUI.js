@@ -36,6 +36,7 @@ window.showMoodLinkPanel = function() {
     messageContainer.style.display = 'flex';
     messageContainer.style.alignItems = 'center';
     messageContainer.style.justifyContent = 'center';
+    messageContainer.textContent = 'Ready to detect emotions...';
 
     // Switch container
     const switchContainer = document.createElement('div');
@@ -172,6 +173,8 @@ window.showMoodLinkPanel = function() {
 
     // Add screenshot message listener to temporarily hide GUI
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        console.log('GUI received message:', message);
+        
         if (message.type === 'beforeScreenshot') {
             // Hide the GUI
             guiFrame.style.visibility = 'hidden';
@@ -181,6 +184,17 @@ window.showMoodLinkPanel = function() {
             // Show the GUI again after screenshot
             guiFrame.style.visibility = 'visible';
             sendResponse({ shown: true });
+        } else if (message.type === 'emotionDetected') {
+            // Display the detected emotion
+            const emotion = message.emotion || 'unknown';
+            console.log('Displaying emotion:', emotion);
+            
+            // Update the message container with the emotion
+            messageContainer.textContent = `Emotion: ${emotion.toUpperCase()}`;
+            messageContainer.style.color = '#4CAF50'; // Green color for detected emotion
+            messageContainer.style.fontWeight = 'bold';
+            
+            sendResponse({ displayed: true });
         }
         return true; // Keep message channel open for async response
     });

@@ -37,11 +37,22 @@ chrome.action.onClicked.addListener(async (tab) => {
 async function startProcessing(tab) {
     while (isProcessing) {
         try {
+            // Check if we can capture this tab (avoid chrome:// URLs)
+            if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
+                console.log('Skipping chrome:// or restricted URL:', tab.url);
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                continue;
+            }
+
             // Tell GUI to hide
-            await chrome.tabs.sendMessage(tab.id, { type: 'beforeScreenshot' });
+            try {
+                await chrome.tabs.sendMessage(tab.id, { type: 'beforeScreenshot' });
+            } catch (e) {
+                console.log('Could not send beforeScreenshot message:', e.message);
+            }
 
             // Wait a brief moment for the GUI to hide
-            await new Promise(resolve => setTimeout(resolve, 50));
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             // Capture the visible area of the current tab
             const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
@@ -50,7 +61,11 @@ async function startProcessing(tab) {
             });
 
             // Tell GUI to show again
-            await chrome.tabs.sendMessage(tab.id, { type: 'afterScreenshot' });
+            try {
+                await chrome.tabs.sendMessage(tab.id, { type: 'afterScreenshot' });
+            } catch (e) {
+                console.log('Could not send afterScreenshot message:', e.message);
+            }
 
             // Convert dataUrl to blob
             const response = await fetch(dataUrl);
@@ -61,16 +76,43 @@ async function startProcessing(tab) {
             formData.append('screenshot', blob, `screenshot-${Date.now()}.png`);
 
             // Send to API
-            await fetch(API_ENDPOINT, {
+            const apiResponse = await fetch(API_ENDPOINT, {
                 method: 'POST',
                 body: formData
             });
+            
+            if (!apiResponse.ok) {
+                throw new Error(`API request failed: ${apiResponse.status}`);
+            }
+            
+            // Get the JSON response with emotion data
+            const result = await apiResponse.json();
+            console.log('API Response:', result);
+            
+            // Send emotion to GUI
+            try {
+                await chrome.tabs.sendMessage(tab.id, {
+                    type: 'emotionDetected',
+                    emotion: result.emotion || 'unknown'
+                });
+                console.log('Emotion sent to GUI:', result.emotion);
+            } catch (e) {
+                console.log('Could not send emotion to GUI:', e.message);
+            }
 
             // Wait for 5 seconds before next capture
             await new Promise(resolve => setTimeout(resolve, 5000));
         } catch (error) {
             console.error('Error in processing:', error);
-            isProcessing = false;
+            
+            // If it's a permission error, stop processing
+            if (error.message.includes('permission') || error.message.includes('chrome://')) {
+                isProcessing = false;
+                break;
+            }
+            
+            // For other errors, wait and continue
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
 }
