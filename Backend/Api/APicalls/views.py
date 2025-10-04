@@ -6,6 +6,8 @@ import json
 import os
 from datetime import datetime
 
+from APicalls.Identifyer import identify
+
 # Global iterator counter
 screenshot_counter = 0
 
@@ -50,10 +52,15 @@ def upload_screenshot(request):
         print(f"  - File: {unique_filename}")
         print(f"  - Saved to: {file_path}")
         
+        # Get emotion prediction
+        predicted_emotion = identify(file_path)
+        print(f"Predicted emotion: {predicted_emotion}")
+        
         # Return success response
         return JsonResponse({
             'success': True,
             'message': 'Screenshot uploaded successfully!',
+            'emotion': predicted_emotion,
             'data': {
                 'filename': unique_filename,
                 'file_path': file_path
