@@ -170,6 +170,21 @@ window.showMoodLinkPanel = function() {
     guiFrame.appendChild(switchContainer);
     document.body.appendChild(guiFrame);
 
+    // Add screenshot message listener to temporarily hide GUI
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.type === 'beforeScreenshot') {
+            // Hide the GUI
+            guiFrame.style.visibility = 'hidden';
+            // Let background script know we're ready
+            sendResponse({ hidden: true });
+        } else if (message.type === 'afterScreenshot') {
+            // Show the GUI again after screenshot
+            guiFrame.style.visibility = 'visible';
+            sendResponse({ shown: true });
+        }
+        return true; // Keep message channel open for async response
+    });
+
     // Return the message container for external updates
     return messageContainer;
 };
