@@ -13,87 +13,94 @@ window.showMoodLinkPanel = function() {
     guiFrame.style.bottom = '20px';
     guiFrame.style.right = '20px';
     guiFrame.style.zIndex = '9999';
-    guiFrame.style.width = '320px';
-    guiFrame.style.minHeight = '180px'; // Vertical rectangle
-    guiFrame.style.background = '#f9f9f9';
-    guiFrame.style.border = '1.5px solid #bbb';
-    guiFrame.style.borderRadius = '16px';
-    guiFrame.style.boxShadow = '0 4px 16px rgba(0,0,0,0.18)';
-    guiFrame.style.padding = '0 0 20px 0';
-    guiFrame.style.opacity = '1';
-    guiFrame.style.transition = 'box-shadow 0.3s';
-    guiFrame.style.cursor = 'default';
-    guiFrame.style.userSelect = 'none';
+    guiFrame.style.width = '280px';
+    guiFrame.style.height = '400px'; // Taller vertical rectangle
+    guiFrame.style.background = '#1a1a1a'; // Dark background
+    guiFrame.style.border = '1px solid #333';
+    guiFrame.style.borderRadius = '12px';
+    guiFrame.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)';
+    guiFrame.style.padding = '20px';
+    guiFrame.style.opacity = '0.95';
     guiFrame.style.display = 'flex';
     guiFrame.style.flexDirection = 'column';
-    guiFrame.style.justifyContent = 'flex-end'; // Switch at the bottom
-    guiFrame.style.alignItems = 'stretch';
+    guiFrame.style.justifyContent = 'space-between';
 
-    // Switch container
+    // Message container
+    const messageContainer = document.createElement('div');
+    messageContainer.id = 'moodlink-message';
+    messageContainer.style.color = '#fff';
+    messageContainer.style.fontSize = '14px';
+    messageContainer.style.fontFamily = 'Arial, sans-serif';
+    messageContainer.style.marginBottom = '20px';
+    messageContainer.style.textAlign = 'center';
+    messageContainer.style.minHeight = '50px';
+    messageContainer.style.display = 'flex';
+    messageContainer.style.alignItems = 'center';
+    messageContainer.style.justifyContent = 'center';
+
+    // Switch container at bottom
     const switchContainer = document.createElement('div');
     switchContainer.style.display = 'flex';
     switchContainer.style.alignItems = 'center';
     switchContainer.style.justifyContent = 'center';
-    switchContainer.style.padding = '18px 24px 0 24px';
+    switchContainer.style.padding = '15px';
+    switchContainer.style.backgroundColor = '#222';
+    switchContainer.style.borderRadius = '8px';
 
     // Switch label and input
     const label = document.createElement('label');
     label.style.display = 'flex';
     label.style.alignItems = 'center';
-    label.style.gap = '10px';
+    label.style.gap = '12px';
     label.style.cursor = 'pointer';
 
-    // Custom styled switch
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.style.display = 'none';
     input.id = 'moodlink-toggle';
+    input.checked = false; // Default to OFF
 
     const slider = document.createElement('span');
-    slider.style.width = '44px';
-    slider.style.height = '24px';
-    slider.style.background = '#ccc';
-    slider.style.borderRadius = '24px';
+    slider.style.width = '50px';
+    slider.style.height = '26px';
+    slider.style.background = '#444';
+    slider.style.borderRadius = '26px';
     slider.style.position = 'relative';
     slider.style.display = 'inline-block';
-    slider.style.transition = 'background 0.2s';
+    slider.style.transition = 'background 0.3s';
 
-    // Knob
     const knob = document.createElement('span');
     knob.style.position = 'absolute';
-    knob.style.left = '2px';
-    knob.style.top = '2px';
+    knob.style.left = '3px';
+    knob.style.top = '3px';
     knob.style.width = '20px';
     knob.style.height = '20px';
     knob.style.background = '#fff';
     knob.style.borderRadius = '50%';
-    knob.style.boxShadow = '0 1px 4px rgba(0,0,0,0.15)';
-    knob.style.transition = 'left 0.2s';
+    knob.style.transition = 'left 0.3s';
     slider.appendChild(knob);
 
-    // ON/OFF text
-    const span = document.createElement('span');
-    span.textContent = 'OFF';
-    span.style.fontWeight = 'bold';
-    span.style.color = '#333';
-    span.style.marginLeft = '12px';
-    span.style.fontSize = '15px';
+    const statusText = document.createElement('span');
+    statusText.textContent = 'OFF';
+    statusText.style.color = '#fff';
+    statusText.style.fontSize = '14px';
+    statusText.style.fontWeight = 'bold';
 
-    // Toggle logic
+    // Toggle logic with process start/stop
     input.addEventListener('change', () => {
         if (input.checked) {
-            slider.style.background = '#4a90e2';
-            knob.style.left = '22px';
-            span.textContent = 'ON';
-            span.style.color = '#4a90e2';
+            slider.style.background = '#4CAF50';
+            knob.style.left = '27px';
+            statusText.textContent = 'ON';
+            messageContainer.textContent = 'Process started...';
+            // Add your process start logic here
         } else {
-            slider.style.background = '#ccc';
-            knob.style.left = '2px';
-            span.textContent = 'OFF';
-            span.style.color = '#333';
+            slider.style.background = '#444';
+            knob.style.left = '3px';
+            statusText.textContent = 'OFF';
+            messageContainer.textContent = '';
+            // Add your process stop logic here
         }
-        // Add your callback here
-        // e.g., toggleExtensionFeature(input.checked);
     });
 
     // Click on slider toggles input
@@ -104,12 +111,16 @@ window.showMoodLinkPanel = function() {
 
     label.appendChild(input);
     label.appendChild(slider);
-    label.appendChild(span);
+    label.appendChild(statusText);
     switchContainer.appendChild(label);
 
-    // Only the box and switch
+    // Assemble the panel
+    guiFrame.appendChild(messageContainer);
     guiFrame.appendChild(switchContainer);
     document.body.appendChild(guiFrame);
+
+    // Return the message container for external updates
+    return messageContainer;
 };
 
 // Optionally, remove the old auto-run logic so the panel only appears when showMoodLinkPanel() is called
