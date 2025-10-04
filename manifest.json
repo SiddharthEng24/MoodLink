@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Screenshot Extension",
+  "version": "1.0",
+  "description": "Takes screenshots and sends them to API.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Take Screenshot"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
+}
