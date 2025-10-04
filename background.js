@@ -25,47 +25,66 @@ chrome.action.onClicked.addListener(async (tab) => {
     formData.append('title', tab.title);
     formData.append('timestamp', new Date().toISOString());
     
-    // Send to API
-    const apiResponse = await fetch(API_ENDPOINT, {
-      method: 'POST',
-      body: formData
-    });
-    
-    if (apiResponse.ok) {
-      const result = await apiResponse.json();
-      console.log('Screenshot sent successfully!', result);
-      
-      // Show success notification
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: () => {
-          const notification = document.createElement('div');
-          notification.textContent = '✅ Screenshot sent to API!';
-          notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #4CAF50;
-            color: white;
-            padding: 15px;
-            border-radius: 5px;
-            z-index: 999999;
-            font-family: Arial, sans-serif;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-          `;
-          document.body.appendChild(notification);
-          
-          setTimeout(() => {
-            if (notification.parentNode) {
-              notification.remove();
-            }
-          }, 3000);
-        }
+        // Try to send to API (will fail for now, but that's ok)
+    let apiSuccess = false;
+    try {
+      const apiResponse = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        body: formData
       });
       
-    } else {
-      throw new Error(`API request failed: ${apiResponse.status} ${apiResponse.statusText}`);
+      if (apiResponse.ok) {
+        const result = await apiResponse.json();
+        console.log('Screenshot sent successfully!', result);
+        apiSuccess = true;
+      }
+    } catch (apiError) {
+      console.log('API call failed (expected):', apiError.message);
     }
+    
+    // Always download the screenshot file regardless of API success
+    const filename = `screenshot-${Date.now()}.png`;
+    
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      function: (dataUrl, filename, apiWorked) => {
+        // Create download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = dataUrl;
+        downloadLink.download = filename;
+        downloadLink.style.display = 'none';
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        // Show notification
+        const notification = document.createElement('div');
+        notification.textContent = apiWorked ? 
+          '✅ Screenshot sent to API & downloaded!' : 
+          '📁 Screenshot downloaded! (API not configured)';
+        notification.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: ${apiWorked ? '#4CAF50' : '#2196F3'};
+          color: white;
+          padding: 15px;
+          border-radius: 5px;
+          z-index: 999999;
+          font-family: Arial, sans-serif;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.remove();
+          }
+        }, 4000);
+      },
+      args: [dataUrl, filename, apiSuccess]
+    });
     
   } catch (error) {
     console.error('Failed to capture or send screenshot:', error);
