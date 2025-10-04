@@ -1,15 +1,10 @@
 // GUI.js
 
-// Ensure the script runs after DOM is loaded
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', createMoodLinkPanel);
-} else {
-    createMoodLinkPanel();
-}
-
-function createMoodLinkPanel() {
-    // Prevent duplicate panels
-    if (document.getElementById('moodlink-extension-panel')) return;
+// Expose a global function to show the panel
+window.showMoodLinkPanel = function() {
+    // Remove existing panel if present
+    const oldPanel = document.getElementById('moodlink-extension-panel');
+    if (oldPanel) oldPanel.remove();
 
     // Create main frame
     const guiFrame = document.createElement('div');
@@ -18,7 +13,8 @@ function createMoodLinkPanel() {
     guiFrame.style.bottom = '20px';
     guiFrame.style.right = '20px';
     guiFrame.style.zIndex = '9999';
-    guiFrame.style.width = '280px';
+    guiFrame.style.width = '320px';
+    guiFrame.style.minHeight = '180px'; // Vertical rectangle
     guiFrame.style.background = '#f9f9f9';
     guiFrame.style.border = '1.5px solid #bbb';
     guiFrame.style.borderRadius = '16px';
@@ -28,32 +24,16 @@ function createMoodLinkPanel() {
     guiFrame.style.transition = 'box-shadow 0.3s';
     guiFrame.style.cursor = 'default';
     guiFrame.style.userSelect = 'none';
-
-    // Header message
-    const header = document.createElement('div');
-    header.textContent = 'Extension Control Panel';
-    header.style.background = '#4a90e2';
-    header.style.color = '#fff';
-    header.style.fontWeight = 'bold';
-    header.style.fontSize = '16px';
-    header.style.padding = '14px 20px 12px 20px';
-    header.style.borderTopLeftRadius = '16px';
-    header.style.borderTopRightRadius = '16px';
-    header.style.letterSpacing = '0.5px';
-    header.style.textAlign = 'center';
-    header.style.marginBottom = '8px';
-
-    // Divider
-    const divider = document.createElement('div');
-    divider.style.height = '1px';
-    divider.style.background = '#e0e0e0';
-    divider.style.margin = '0 16px 10px 16px';
+    guiFrame.style.display = 'flex';
+    guiFrame.style.flexDirection = 'column';
+    guiFrame.style.justifyContent = 'flex-end'; // Switch at the bottom
+    guiFrame.style.alignItems = 'stretch';
 
     // Switch container
     const switchContainer = document.createElement('div');
     switchContainer.style.display = 'flex';
     switchContainer.style.alignItems = 'center';
-    switchContainer.style.justifyContent = 'space-between';
+    switchContainer.style.justifyContent = 'center';
     switchContainer.style.padding = '18px 24px 0 24px';
 
     // Switch label and input
@@ -127,9 +107,9 @@ function createMoodLinkPanel() {
     label.appendChild(span);
     switchContainer.appendChild(label);
 
-    // Assemble frame
-    guiFrame.appendChild(header);
-    guiFrame.appendChild(divider);
+    // Only the box and switch
     guiFrame.appendChild(switchContainer);
     document.body.appendChild(guiFrame);
-}
+};
+
+// Optionally, remove the old auto-run logic so the panel only appears when showMoodLinkPanel() is called
