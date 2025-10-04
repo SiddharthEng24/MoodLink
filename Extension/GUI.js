@@ -25,20 +25,19 @@ window.showMoodLinkPanel = function() {
     guiFrame.style.flexDirection = 'column';
     guiFrame.style.justifyContent = 'space-between';
 
-    // Message container
+    // Message container for status updates
     const messageContainer = document.createElement('div');
     messageContainer.id = 'moodlink-message';
     messageContainer.style.color = '#fff';
     messageContainer.style.fontSize = '14px';
     messageContainer.style.fontFamily = 'Arial, sans-serif';
-    messageContainer.style.marginBottom = '20px';
     messageContainer.style.textAlign = 'center';
     messageContainer.style.minHeight = '50px';
     messageContainer.style.display = 'flex';
     messageContainer.style.alignItems = 'center';
     messageContainer.style.justifyContent = 'center';
 
-    // Switch container at bottom
+    // Switch container
     const switchContainer = document.createElement('div');
     switchContainer.style.display = 'flex';
     switchContainer.style.alignItems = 'center';
@@ -46,8 +45,9 @@ window.showMoodLinkPanel = function() {
     switchContainer.style.padding = '15px';
     switchContainer.style.backgroundColor = '#222';
     switchContainer.style.borderRadius = '8px';
+    switchContainer.style.marginTop = 'auto';
 
-    // Switch label and input
+    // Switch elements
     const label = document.createElement('label');
     label.style.display = 'flex';
     label.style.alignItems = 'center';
@@ -58,16 +58,17 @@ window.showMoodLinkPanel = function() {
     input.type = 'checkbox';
     input.style.display = 'none';
     input.id = 'moodlink-toggle';
-    input.checked = false; // Default to OFF
 
     const slider = document.createElement('span');
     slider.style.width = '50px';
     slider.style.height = '26px';
-    slider.style.background = '#444';
+    slider.style.background = '#2196F3'; // Blue when OFF
     slider.style.borderRadius = '26px';
     slider.style.position = 'relative';
     slider.style.display = 'inline-block';
-    slider.style.transition = 'background 0.3s';
+    slider.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+    slider.style.cursor = 'pointer';
+    slider.style.boxShadow = '0 0 5px rgba(33, 150, 243, 0.3)'; // Blue glow when OFF
 
     const knob = document.createElement('span');
     knob.style.position = 'absolute';
@@ -77,38 +78,88 @@ window.showMoodLinkPanel = function() {
     knob.style.height = '20px';
     knob.style.background = '#fff';
     knob.style.borderRadius = '50%';
-    knob.style.transition = 'left 0.3s';
+    knob.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+    knob.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
     slider.appendChild(knob);
 
     const statusText = document.createElement('span');
     statusText.textContent = 'OFF';
-    statusText.style.color = '#fff';
+    statusText.style.color = '#2196F3'; // Blue when OFF
     statusText.style.fontSize = '14px';
     statusText.style.fontWeight = 'bold';
+    statusText.style.transition = 'color 0.3s ease';
 
-    // Toggle logic with process start/stop
-    input.addEventListener('change', () => {
-        if (input.checked) {
-            slider.style.background = '#4CAF50';
-            knob.style.left = '27px';
-            statusText.textContent = 'ON';
-            messageContainer.textContent = 'Process started...';
-            // Add your process start logic here
-        } else {
-            slider.style.background = '#444';
-            knob.style.left = '3px';
-            statusText.textContent = 'OFF';
-            messageContainer.textContent = '';
-            // Add your process stop logic here
-        }
+    // Add touch and hover effects
+    slider.addEventListener('mousedown', () => {
+        slider.style.transform = 'scale(0.95)';
     });
 
-    // Click on slider toggles input
-    slider.addEventListener('click', () => {
-        input.checked = !input.checked;
-        input.dispatchEvent(new Event('change'));
+    slider.addEventListener('mouseup', () => {
+        slider.style.transform = 'scale(1)';
     });
 
+    slider.addEventListener('mouseleave', () => {
+        slider.style.transform = 'scale(1)';
+    });
+
+    // Toggle handler with animation
+    const handleToggle = () => {
+        const newState = !input.checked;
+        chrome.runtime.sendMessage({
+            type: 'toggleProcess',
+            enabled: newState
+        }, response => {
+            if (response && response.success) {
+                input.checked = newState;
+                if (newState) {
+                    slider.style.background = '#4CAF50';
+                    slider.style.boxShadow = '0 0 10px rgba(76, 175, 80, 0.3)';
+                    knob.style.left = '27px';
+                    statusText.textContent = 'ON';
+                    statusText.style.color = '#4CAF50';
+                    messageContainer.textContent = 'Process started...';
+
+                    // Add success animation
+                    slider.style.transform = 'scale(1.05)';
+                    setTimeout(() => slider.style.transform = 'scale(1)', 200);
+                } else {
+                    slider.style.background = '#2196F3';
+                    slider.style.boxShadow = '0 0 5px rgba(33, 150, 243, 0.3)';
+                    knob.style.left = '3px';
+                    statusText.textContent = 'OFF';
+                    statusText.style.color = '#2196F3';
+                    messageContainer.textContent = 'Process stopped';
+                }
+            } else {
+                messageContainer.textContent = 'Failed to ' + (newState ? 'start' : 'stop') + ' process';
+                console.error('Toggle failed:', response);
+            }
+        });
+    };
+
+    // Event listeners
+    slider.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleToggle();
+    });
+
+    // Touch event support
+    slider.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        slider.style.transform = 'scale(0.95)';
+    });
+
+    slider.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        slider.style.transform = 'scale(1)';
+        handleToggle();
+    });
+
+    label.setAttribute('tabindex', '0');
+    label.setAttribute('role', 'switch');
+    label.setAttribute('aria-checked', 'false');
+
+    // Assemble the switch
     label.appendChild(input);
     label.appendChild(slider);
     label.appendChild(statusText);
