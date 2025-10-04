@@ -1,5 +1,5 @@
 // API endpoint - change this to your actual API URL
-const API_ENDPOINT = 'https://your-api-endpoint.com/upload-screenshot';
+const API_ENDPOINT = 'http://localhost:8000/api/';
 
 // Take screenshot and send to API when extension icon is clicked
 chrome.action.onClicked.addListener(async (tab) => {
