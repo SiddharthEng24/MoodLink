@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
@@ -10,7 +10,7 @@ from APicalls.Identifyer import identify
 from APicalls.FaceSanitizer import sanitize_image_for_emotion_detection
 from APicalls.MeetingTracker import meeting_tracker
 
-# Global iterator counter
+# Global iterator counter for screenshot naming
 screenshot_counter = 0
 
 def get_next_screenshot_id():
@@ -19,53 +19,68 @@ def get_next_screenshot_id():
     screenshot_counter += 1
     return screenshot_counter
 
+def add_cors_headers(response):
+    """Add CORS headers to response for Chrome extension compatibility"""
+    response['Access-Control-Allow-Origin'] = '*'
+    response['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response['Access-Control-Allow-Headers'] = 'Content-Type, Accept'
+    return response
+
+def handle_cors_preflight(request):
+    """Handle CORS preflight requests"""
+    if request.method == 'OPTIONS':
+        response = JsonResponse({})
+        return add_cors_headers(response)
+    return None
+
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "OPTIONS"])
 def upload_screenshot(request):
+    """
+    Handle screenshot upload, emotion detection, and session tracking.
+    
+    Process:
+    1. Save uploaded screenshot
+    2. Sanitize image (crop to face)
+    3. Detect emotion using AI model
+    4. Track in meeting session
+    5. Return emotion result
+    """
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return handle_cors_preflight(request)
+        
     try:
-        # Check if screenshot file is in the request
+        # Validate request
         if 'screenshot' not in request.FILES:
-            return JsonResponse({
+            response = JsonResponse({
                 'success': False,
                 'error': 'No screenshot file provided'
             }, status=400)
+            return add_cors_headers(response)
         
         screenshot_file = request.FILES['screenshot']
         
-        # Get next screenshot ID from global iterator
-        iter = get_next_screenshot_id()
-        # Generate unique filename with iterator
-        unique_filename = f"screenshot_{iter}.png"
-        print(f"Screenshot ID: {iter}, Filename: {unique_filename}")
+        # Generate unique filename
+        screenshot_id = get_next_screenshot_id()
+        unique_filename = f"screenshot_{screenshot_id}.png"
+        file_path = f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/{unique_filename}"
         
-        # Save to Testimages folder only
-        file_path = rf"C:\Users\engin\IdeaProjects\MoodLink\Testimages\{unique_filename}"
-
-        # Create directory if it doesn't exist
-        os.makedirs(r"C:\Users\engin\IdeaProjects\MoodLink\Testimages", exist_ok=True)
-
-        # Save the file
+        # Create directory if needed
+        os.makedirs("/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages", exist_ok=True)
+        
+        # Save screenshot
         with open(file_path, 'wb') as f:
             for chunk in screenshot_file.chunks():
                 f.write(chunk)
         
-        # Log the received data
-        print(f"Screenshot received:")
-        print(f"  - File: {unique_filename}")
-        print(f"  - Saved to: {file_path}")
-        
-        # Sanitize image by cropping to face
-        print("Sanitizing image (cropping to face)...")
+        # Process image: sanitize (crop to face) and detect emotion
         sanitized_image_path = sanitize_image_for_emotion_detection(file_path)
-        print(f"Sanitized image: {sanitized_image_path}")
-        
-        # Get emotion prediction from sanitized image
         predicted_emotion = identify(sanitized_image_path)
-        print(f"Predicted emotion: {predicted_emotion}")
         
-        # Track emotion data in meeting session
+        # Track emotion in meeting session
         try:
-            # Extract confidence from emotion string (e.g., "😊 happy (85.3%)")
+            # Extract confidence percentage if available
             confidence = None
             if '(' in predicted_emotion and '%' in predicted_emotion:
                 confidence_str = predicted_emotion.split('(')[1].split('%')[0]
@@ -77,100 +92,131 @@ def upload_screenshot(request):
                 filename=unique_filename,
                 sanitized_path=sanitized_image_path
             )
-            print(f"Emotion data tracked in meeting session")
+            
         except Exception as e:
-            print(f"Error tracking emotion data: {str(e)}")
+            pass  # Continue processing even if session tracking fails
         
         # Return success response
-        return JsonResponse({
+        response = JsonResponse({
             'success': True,
-            'message': 'Screenshot uploaded and processed successfully!',
+            'message': 'Screenshot processed successfully',
             'emotion': predicted_emotion,
             'session_info': meeting_tracker.get_current_session_info(),
             'data': {
                 'filename': unique_filename,
-                'file_path': file_path,
-                'sanitized_path': sanitized_image_path
+                'screenshot_id': screenshot_id
             }
         }, status=200)
+        return add_cors_headers(response)
         
     except Exception as e:
-        print(f"Error uploading screenshot: {str(e)}")
-        return JsonResponse({
+        response = JsonResponse({
             'success': False,
-            'error': f'Upload failed: {str(e)}'
+            'error': f'Processing failed: {str(e)}'
         }, status=500)
-<<<<<<< HEAD
+        return add_cors_headers(response)
 
 
 @csrf_exempt
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "OPTIONS"])
 def end_meeting_session(request):
     """
-    End the current meeting session, generate summary, and cleanup files.
+    End current meeting session and generate AI summary.
+    
+    Process:
+    1. End active meeting session
+    2. Generate AI summary using Gemini
+    3. Clean up image files
+    4. Return session statistics and summary
     """
-    try:
-        print("Ending meeting session and generating summary...")
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return handle_cors_preflight(request)
         
+    try:
         # End session and get summary
         result = meeting_tracker.end_current_session()
         
+        # Check for errors
         if 'error' in result:
-            return JsonResponse({
+            response = JsonResponse({
                 'success': False,
                 'error': result['error']
             }, status=400)
+            return add_cors_headers(response)
         
-        print(f"Meeting session ended successfully:")
-        print(f"  - Duration: {result['session_data']['duration_minutes']:.1f} minutes")
-        print(f"  - Emotions tracked: {result['session_data']['emotion_count']}")
-        print(f"  - Files deleted: {result['deleted_files']}")
+        # Log session completion
+        session_data = result['session_data']
+        print(f"Meeting completed: {session_data['emotion_count']} emotions, {session_data['duration_minutes']:.1f}min")
         
-        return JsonResponse({
+        # Return success response
+        response_data = {
             'success': True,
-            'message': 'Meeting session ended and summary generated successfully!',
-            'session_data': result['session_data'],
+            'message': 'Meeting session ended and summary generated successfully',
+            'session_data': session_data,
             'summary': result['summary'],
             'deleted_files': result['deleted_files'],
             'cleanup_complete': result['cleanup_complete']
-        }, status=200)
+        }
+        
+        # Add HTML report URL if available
+        if result.get('html_filename'):
+            response_data['html_report_url'] = f'http://localhost:8000/api/report/{result["html_filename"]}'
+            response_data['html_filename'] = result['html_filename']
+        
+        response = JsonResponse(response_data, status=200)
+        return add_cors_headers(response)
         
     except Exception as e:
-        print(f"Error ending meeting session: {str(e)}")
-        return JsonResponse({
+        response = JsonResponse({
             'success': False,
             'error': f'Failed to end session: {str(e)}'
         }, status=500)
+        return add_cors_headers(response)
 
 
 @csrf_exempt
-@require_http_methods(["GET"])
-def get_session_status(request):
+@require_http_methods(["GET", "OPTIONS"])
+def serve_html_report(request, filename):
     """
-    Get current meeting session status and data.
+    Serve HTML report files.
+    
+    Args:
+        filename (str): Name of the HTML report file
     """
-    try:
-        session_info = meeting_tracker.get_current_session_info()
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return handle_cors_preflight(request)
         
-        if session_info:
+    try:
+        # Validate filename for security
+        if not filename.endswith('.html') or '..' in filename:
             return JsonResponse({
-                'success': True,
-                'has_active_session': True,
-                'session_info': session_info
-            }, status=200)
-        else:
+                'success': False,
+                'error': 'Invalid filename'
+            }, status=400)
+        
+        # Construct file path
+        file_path = f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/{filename}"
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
             return JsonResponse({
-                'success': True,
-                'has_active_session': False,
-                'session_info': None
-            }, status=200)
-            
+                'success': False,
+                'error': 'Report not found'
+            }, status=404)
+        
+        # Read and serve HTML file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        # Create HTTP response with HTML content
+        response = HttpResponse(html_content, content_type='text/html')
+        return add_cors_headers(response)
+        
     except Exception as e:
-        print(f"Error getting session status: {str(e)}")
-        return JsonResponse({
+        response = JsonResponse({
             'success': False,
-            'error': f'Failed to get session status: {str(e)}'
+            'error': f'Failed to serve report: {str(e)}'
         }, status=500)
-
-=======
->>>>>>> refs/remotes/origin/main
+        return add_cors_headers(response)

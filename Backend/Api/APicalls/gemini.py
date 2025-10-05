@@ -16,7 +16,6 @@ def gemini(prompt):
         return answer
 
     except Exception as e:
-        print(f"Error using Gemini API: {e}")
         return None
 
 

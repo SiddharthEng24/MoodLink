@@ -61,13 +61,14 @@ class MeetingSession:
         
         self.emotion_data.append(emotion_entry)
         
-        # Track image paths for cleanup
+        # Track image paths for cleanup (avoid duplicates)
         if filename:
-            self.image_paths.append(f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/{filename}")
-        if sanitized_path:
+            original_path = f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/{filename}"
+            if original_path not in self.image_paths:
+                self.image_paths.append(original_path)
+                
+        if sanitized_path and sanitized_path not in self.image_paths:
             self.image_paths.append(sanitized_path)
-            
-        print(f"Added emotion data: {emotion} at {emotion_entry['elapsed_minutes']:.1f} minutes")
     
     def _get_elapsed_minutes(self) -> float:
         """Get elapsed time since session start in minutes."""
@@ -78,14 +79,13 @@ class MeetingSession:
         """Mark the session as ended."""
         self.end_time = datetime.now()
         self.is_active = False
-        print(f"Session {self.session_id} ended after {self._get_elapsed_minutes():.1f} minutes")
     
     def get_meeting_summary_prompt(self) -> str:
         """
-        Generate a prompt for Gemini to summarize the meeting.
+        Generate a prompt for Gemini to create a visually appealing HTML report.
         
         Returns:
-            str: Formatted prompt for Gemini API
+            str: Formatted prompt for Gemini API to generate HTML
         """
         if not self.emotion_data:
             return "No emotion data collected during this session."
@@ -110,9 +110,14 @@ class MeetingSession:
                 emotion_counts[base_emotion] = emotion_counts.get(base_emotion, 0) + 1
         
         prompt = f"""
-Analyze this meeting/session based on emotion detection data:
+Create a beautiful, modern HTML report for this meeting emotion analysis. Make it visually stunning with:
+- Modern CSS styling with gradients, shadows, and animations
+- Professional color scheme (dark theme preferred)
+- Interactive charts or visual representations of emotions
+- Responsive design
+- Clean typography and layout
 
-SESSION DETAILS:
+SESSION DATA:
 - Duration: {duration_minutes:.1f} minutes
 - Total emotion readings: {len(self.emotion_data)}
 - Started: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}
@@ -131,42 +136,63 @@ Please provide a comprehensive meeting summary including:
 4. Recommendations for future meetings based on emotional feedback
 5. Notable emotional transitions or moments
 
-Format the response as a professional meeting analysis report.
+Generate a complete HTML document with:
+1. Modern CSS styling (embedded in <style> tags)
+2. Professional meeting analysis content
+3. Visual emotion breakdown with percentages
+4. Timeline visualization
+5. Key insights and recommendations
+6. Responsive design for any screen size
+
+Make it look like a premium business analytics report. Return ONLY the complete HTML code, nothing else.
 """
         return prompt
     
-    def generate_summary(self) -> str:
+    def generate_summary(self) -> Dict[str, str]:
         """
-        Generate meeting summary using Gemini API.
+        Generate meeting summary using Gemini API and save as HTML.
         
         Returns:
-            str: Generated meeting summary
+            dict: Contains summary text and HTML file path
         """
         try:
             prompt = self.get_meeting_summary_prompt()
-            summary = gemini(prompt)
+            html_content = gemini(prompt)
             
-            if summary:
-                # Save summary to file
-                summary_path = f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/meeting_summary_{self.session_id}.txt"
-                with open(summary_path, 'w', encoding='utf-8') as f:
-                    f.write(f"Meeting Summary - {self.session_id}\n")
-                    f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    f.write("=" * 50 + "\n\n")
-                    f.write(summary)
+            if html_content:
+                # Save HTML report
+                html_filename = f"meeting_report_{self.session_id}.html"
+                html_path = f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/{html_filename}"
                 
-                print(f"Meeting summary saved to: {summary_path}")
-                return summary
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                
+                # Also save text version for API response
+                text_summary = f"Meeting Report Generated - {self.session_id}\nDuration: {self._get_elapsed_minutes():.1f} minutes\nEmotions tracked: {len(self.emotion_data)}\nHTML report saved to: {html_filename}"
+                
+                return {
+                    'summary': text_summary,
+                    'html_path': html_path,
+                    'html_filename': html_filename
+                }
             else:
-                return "Failed to generate summary using Gemini API."
+                return {
+                    'summary': "Failed to generate HTML report using Gemini API.",
+                    'html_path': None,
+                    'html_filename': None
+                }
                 
         except Exception as e:
-            print(f"Error generating summary: {str(e)}")
-            return f"Error generating summary: {str(e)}"
+            return {
+                'summary': f"Error generating HTML report: {str(e)}",
+                'html_path': None,
+                'html_filename': None
+            }
     
     def cleanup_files(self):
         """
         Delete all images and clear data for this session.
+        Enhanced version that ensures all files are deleted.
         """
         deleted_count = 0
         
@@ -176,24 +202,51 @@ Format the response as a professional meeting analysis report.
                 if os.path.exists(image_path):
                     os.remove(image_path)
                     deleted_count += 1
-                    print(f"Deleted: {image_path}")
             except Exception as e:
-                print(f"Error deleting {image_path}: {str(e)}")
+                pass  # Continue deleting other files
         
-        # Delete the Sanitized subfolder if it exists and is empty
+        # Additional cleanup: Delete ALL screenshot files in Testimages directory
+        testimages_dir = "/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages"
+        try:
+            if os.path.exists(testimages_dir):
+                for filename in os.listdir(testimages_dir):
+                    # Only delete screenshots, preserve HTML reports
+                    if filename.startswith("screenshot_") and filename.endswith(".png"):
+                        file_path = os.path.join(testimages_dir, filename)
+                        try:
+                            os.remove(file_path)
+                            deleted_count += 1
+                        except Exception as e:
+                            pass
+        except Exception as e:
+            pass
+        
+        # Delete all files in the Sanitized subfolder
         sanitized_dir = "/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/Sanitized"
         try:
-            if os.path.exists(sanitized_dir) and not os.listdir(sanitized_dir):
-                os.rmdir(sanitized_dir)
-                print(f"Deleted empty directory: {sanitized_dir}")
+            if os.path.exists(sanitized_dir):
+                for filename in os.listdir(sanitized_dir):
+                    file_path = os.path.join(sanitized_dir, filename)
+                    try:
+                        if os.path.isfile(file_path):
+                            os.remove(file_path)
+                            deleted_count += 1
+                    except Exception as e:
+                        pass
+                
+                # Remove the directory if it's empty
+                try:
+                    os.rmdir(sanitized_dir)
+                except OSError:
+                    pass
         except Exception as e:
-            print(f"Error deleting sanitized directory: {str(e)}")
+            pass
         
         # Clear data
         self.emotion_data.clear()
         self.image_paths.clear()
         
-        print(f"Cleanup complete: {deleted_count} files deleted, data cleared")
+        print(f"Cleanup complete: {deleted_count} files deleted")
         return deleted_count
     
     def get_session_data(self) -> Dict[str, Any]:
@@ -236,7 +289,6 @@ class MeetingTracker:
         
         # Create new session
         self.current_session = MeetingSession()
-        print(f"Started new meeting session: {self.current_session.session_id}")
         return self.current_session.session_id
     
     def add_emotion(self, emotion: str, confidence: float = None, 
@@ -263,7 +315,7 @@ class MeetingTracker:
         self.current_session.end_session()
         
         # Generate summary
-        summary = self.current_session.generate_summary()
+        summary_result = self.current_session.generate_summary()
         
         # Get session data before cleanup
         session_data = self.current_session.get_session_data()
@@ -273,7 +325,9 @@ class MeetingTracker:
         
         result = {
             'session_data': session_data,
-            'summary': summary,
+            'summary': summary_result['summary'],
+            'html_path': summary_result['html_path'],
+            'html_filename': summary_result['html_filename'],
             'deleted_files': deleted_files,
             'cleanup_complete': True
         }

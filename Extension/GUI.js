@@ -1,293 +1,480 @@
-// GUI.js
+// MoodLink Chrome Extension - GUI Panel
+// Provides user interface for emotion detection control
 
-// Expose a global function to show the panel
+/**
+ * Main function to create and show the MoodLink panel
+ * Creates a dark-themed floating panel with emotion detection controls
+ */
 window.showMoodLinkPanel = function() {
     // Remove existing panel if present
-    const oldPanel = document.getElementById('moodlink-extension-panel');
-    if (oldPanel) oldPanel.remove();
+    const existingPanel = document.getElementById('moodlink-extension-panel');
+    if (existingPanel) existingPanel.remove();
 
-    // Create main frame
-    const guiFrame = document.createElement('div');
-    guiFrame.id = 'moodlink-extension-panel';
-    guiFrame.style.position = 'fixed';
-    guiFrame.style.bottom = '20px';
-    guiFrame.style.right = '20px';
-    guiFrame.style.zIndex = '9999';
-    guiFrame.style.width = '280px';
-    guiFrame.style.height = '400px'; // Taller vertical rectangle
-    guiFrame.style.background = '#1a1a1a'; // Dark background
-    guiFrame.style.border = '1px solid #333';
-    guiFrame.style.borderRadius = '12px';
-    guiFrame.style.boxShadow = '0 4px 16px rgba(0,0,0,0.3)';
-    guiFrame.style.padding = '20px';
-    guiFrame.style.opacity = '0.95';
-    guiFrame.style.display = 'flex';
-    guiFrame.style.flexDirection = 'column';
-    guiFrame.style.justifyContent = 'space-between';
+    // Create and configure main panel
+    const panel = createMainPanel();
+    const { topBar, messageContainer, switchContainer } = createPanelComponents();
+    
+    // Assemble panel
+    panel.appendChild(topBar);
+    panel.appendChild(messageContainer);
+    panel.appendChild(switchContainer);
+    document.body.appendChild(panel);
 
-    // --- Top bar with close button ---
+    // Setup message listeners for backend communication
+    setupMessageListeners(panel, messageContainer);
+    
+    return messageContainer;
+};
+
+/**
+ * Create the main panel container with styling
+ */
+function createMainPanel() {
+    const panel = document.createElement('div');
+    panel.id = 'moodlink-extension-panel';
+    
+    // Panel styling
+    Object.assign(panel.style, {
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        zIndex: '9999',
+        width: '280px',
+        height: '400px',
+        background: '#1a1a1a',
+        border: '1px solid #333',
+        borderRadius: '12px',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        padding: '20px',
+        opacity: '0.95',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        fontFamily: 'Arial, sans-serif'
+    });
+    
+    return panel;
+}
+
+/**
+ * Create all panel components (top bar, message area, controls)
+ */
+function createPanelComponents() {
+    const topBar = createTopBar();
+    const messageContainer = createMessageContainer();
+    const switchContainer = createSwitchContainer();
+    
+    return { topBar, messageContainer, switchContainer };
+}
+
+/**
+ * Create top bar with close button
+ */
+function createTopBar() {
     const topBar = document.createElement('div');
-    topBar.style.display = 'flex';
-    topBar.style.justifyContent = 'flex-end';
-    topBar.style.alignItems = 'center';
-    topBar.style.height = '28px';
-    topBar.style.marginBottom = '10px';
-
-    // Close button
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.title = 'Close';
-    closeBtn.style.background = 'transparent';
-    closeBtn.style.border = 'none';
-    closeBtn.style.color = '#aaa';
-    closeBtn.style.fontSize = '20px';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.style.borderRadius = '50%';
-    closeBtn.style.width = '28px';
-    closeBtn.style.height = '28px';
-    closeBtn.style.display = 'flex';
-    closeBtn.style.alignItems = 'center';
-    closeBtn.style.justifyContent = 'center';
-    closeBtn.style.transition = 'background 0.2s, color 0.2s';
-
-    closeBtn.addEventListener('mouseenter', () => {
-        closeBtn.style.color = '#fff';
-        closeBtn.style.background = '#e53935';
-    });
-    closeBtn.addEventListener('mouseleave', () => {
-        closeBtn.style.color = '#aaa';
-        closeBtn.style.background = 'transparent';
+    Object.assign(topBar.style, {
+        display: 'flex',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        height: '28px',
+        marginBottom: '10px'
     });
 
-    // Updated close button click handler
-    closeBtn.addEventListener('click', () => {
-        // First, stop any ongoing processing
-        chrome.runtime.sendMessage({
-            type: 'toggleProcess',
-            enabled: false
-        }, response => {
-            // Remove the GUI after ensuring processing is stopped
-            if (input.checked) {
-                input.checked = false;
-                slider.style.background = '#2196F3';
-                knob.style.left = '3px';
-                statusText.textContent = 'OFF';
-                statusText.style.color = '#2196F3';
+    const closeButton = createCloseButton();
+    topBar.appendChild(closeButton);
+    
+    return topBar;
+}
+
+/**
+ * Create close button with hover effects
+ */
+function createCloseButton() {
+    const button = document.createElement('button');
+    button.textContent = '✕';
+    button.title = 'Close and end session';
+    
+    Object.assign(button.style, {
+        background: 'transparent',
+        border: 'none',
+        color: '#aaa',
+        fontSize: '20px',
+        cursor: 'pointer',
+        borderRadius: '50%',
+        width: '28px',
+        height: '28px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background 0.2s, color 0.2s'
+    });
+
+    // Hover effects
+    button.addEventListener('mouseenter', () => {
+        button.style.color = '#fff';
+        button.style.background = '#e53935';
+    });
+    
+    button.addEventListener('mouseleave', () => {
+        button.style.color = '#aaa';
+        button.style.background = 'transparent';
+    });
+
+    // Click handler - stops processing and ends session
+    button.addEventListener('click', handleCloseButtonClick);
+    
+    return button;
+}
+
+/**
+ * Handle close button click - stop processing and end session
+ */
+function handleCloseButtonClick() {
+    console.log('Close button clicked - ending session...');
+    
+    // Stop processing first
+    chrome.runtime.sendMessage({ type: 'toggleProcess', enabled: false }, () => {
+        // Then end session and remove panel
+        chrome.runtime.sendMessage({ type: 'endSession' }, (response) => {
+            if (response && response.success) {
+                console.log('Session ended successfully');
+                
+                // Open HTML report if available
+                if (response.result && response.result.html_report_url) {
+                    window.open(response.result.html_report_url, '_blank');
+                }
+            } else {
+                console.error('Failed to end session:', response?.error);
             }
-            // Remove the panel
-            guiFrame.remove();
+            
+            // Remove panel
+            const panel = document.getElementById('moodlink-extension-panel');
+            if (panel) panel.remove();
         });
     });
+}
 
-    topBar.appendChild(closeBtn);
+/**
+ * Create message container for status updates
+ */
+function createMessageContainer() {
+    const container = document.createElement('div');
+    container.id = 'moodlink-message';
+    container.textContent = 'Ready to detect emotions...';
+    
+    Object.assign(container.style, {
+        color: '#fff',
+        fontSize: '14px',
+        textAlign: 'center',
+        minHeight: '50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '10px',
+        margin: '10px 0',
+        borderRadius: '8px',
+        backgroundColor: 'rgba(0,0,0,0.2)'
+    });
+    
+    return container;
+}
 
-    // Message container for status updates
-    const messageContainer = document.createElement('div');
-    messageContainer.id = 'moodlink-message';
-    messageContainer.style.color = '#fff';
-    messageContainer.style.fontSize = '14px';
-    messageContainer.style.fontFamily = 'Arial, sans-serif';
-    messageContainer.style.textAlign = 'center';
-    messageContainer.style.minHeight = '50px';
-    messageContainer.style.display = 'flex';
-    messageContainer.style.alignItems = 'center';
-    messageContainer.style.justifyContent = 'center';
-    messageContainer.textContent = 'Ready to detect emotions...';
+/**
+ * Create switch container with toggle control
+ */
+function createSwitchContainer() {
+    const container = document.createElement('div');
+    Object.assign(container.style, {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '15px',
+        backgroundColor: '#222',
+        borderRadius: '8px',
+        marginTop: 'auto'
+    });
 
-    // Update the message container style for better visibility
-    messageContainer.style.padding = '10px';
-    messageContainer.style.margin = '10px 0';
-    messageContainer.style.borderRadius = '8px';
-    messageContainer.style.backgroundColor = 'rgba(0,0,0,0.2)';
+    const switchControl = createSwitchControl();
+    container.appendChild(switchControl);
+    
+    return container;
+}
 
-    // Switch container
-    const switchContainer = document.createElement('div');
-    switchContainer.style.display = 'flex';
-    switchContainer.style.alignItems = 'center';
-    switchContainer.style.justifyContent = 'center';
-    switchContainer.style.padding = '15px';
-    switchContainer.style.backgroundColor = '#222';
-    switchContainer.style.borderRadius = '8px';
-    switchContainer.style.marginTop = 'auto';
-
-    // Switch elements
+/**
+ * Create toggle switch control
+ */
+function createSwitchControl() {
     const label = document.createElement('label');
-    label.style.display = 'flex';
-    label.style.alignItems = 'center';
-    label.style.gap = '12px';
-    label.style.cursor = 'pointer';
+    Object.assign(label.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        cursor: 'pointer'
+    });
+    
+    label.setAttribute('tabindex', '0');
+    label.setAttribute('role', 'switch');
+    label.setAttribute('aria-checked', 'false');
 
+    // Hidden checkbox input
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.style.display = 'none';
     input.id = 'moodlink-toggle';
 
+    // Visual slider
+    const slider = createSlider();
+    
+    // Status text
+    const statusText = createStatusText();
+
+    // Toggle functionality
+    const toggleHandler = createToggleHandler(input, slider, statusText);
+    slider.addEventListener('click', toggleHandler);
+    
+    // Touch support
+    slider.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        toggleHandler();
+    });
+
+    // Assemble switch
+    label.appendChild(input);
+    label.appendChild(slider);
+    label.appendChild(statusText);
+    
+    return label;
+}
+
+/**
+ * Create visual slider element
+ */
+function createSlider() {
     const slider = document.createElement('span');
-    slider.style.width = '50px';
-    slider.style.height = '26px';
-    slider.style.background = '#2196F3'; // Blue when OFF
-    slider.style.borderRadius = '26px';
-    slider.style.position = 'relative';
-    slider.style.display = 'inline-block';
-    slider.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-    slider.style.cursor = 'pointer';
-    slider.style.boxShadow = '0 0 5px rgba(33, 150, 243, 0.3)'; // Blue glow when OFF
+    Object.assign(slider.style, {
+        width: '50px',
+        height: '26px',
+        background: '#2196F3',
+        borderRadius: '26px',
+        position: 'relative',
+        display: 'inline-block',
+        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        cursor: 'pointer',
+        boxShadow: '0 0 5px rgba(33, 150, 243, 0.3)'
+    });
 
+    // Create knob
     const knob = document.createElement('span');
-    knob.style.position = 'absolute';
-    knob.style.left = '3px';
-    knob.style.top = '3px';
-    knob.style.width = '20px';
-    knob.style.height = '20px';
-    knob.style.background = '#fff';
-    knob.style.borderRadius = '50%';
-    knob.style.transition = 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)';
-    knob.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+    Object.assign(knob.style, {
+        position: 'absolute',
+        left: '3px',
+        top: '3px',
+        width: '20px',
+        height: '20px',
+        background: '#fff',
+        borderRadius: '50%',
+        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+    });
+    
     slider.appendChild(knob);
+    
+    // Hover effects
+    slider.addEventListener('mousedown', () => slider.style.transform = 'scale(0.95)');
+    slider.addEventListener('mouseup', () => slider.style.transform = 'scale(1)');
+    slider.addEventListener('mouseleave', () => slider.style.transform = 'scale(1)');
+    
+    return slider;
+}
 
-    const statusText = document.createElement('span');
-    statusText.textContent = 'OFF';
-    statusText.style.color = '#2196F3'; // Blue when OFF
-    statusText.style.fontSize = '14px';
-    statusText.style.fontWeight = 'bold';
-    statusText.style.transition = 'color 0.3s ease';
-
-    // Add touch and hover effects
-    slider.addEventListener('mousedown', () => {
-        slider.style.transform = 'scale(0.95)';
+/**
+ * Create status text element
+ */
+function createStatusText() {
+    const text = document.createElement('span');
+    text.textContent = 'OFF';
+    
+    Object.assign(text.style, {
+        color: '#2196F3',
+        fontSize: '14px',
+        fontWeight: 'bold',
+        transition: 'color 0.3s ease'
     });
+    
+    return text;
+}
 
-    slider.addEventListener('mouseup', () => {
-        slider.style.transform = 'scale(1)';
-    });
-
-    slider.addEventListener('mouseleave', () => {
-        slider.style.transform = 'scale(1)';
-    });
-
-    // Enhanced toggle handler with proper status updates
-    const handleToggle = () => {
+/**
+ * Create toggle handler function
+ */
+function createToggleHandler(input, slider, statusText) {
+    return function() {
         const newState = !input.checked;
+        const messageContainer = document.getElementById('moodlink-message');
+        
         messageContainer.textContent = newState ? 'Connecting to backend...' : 'Stopping...';
 
         chrome.runtime.sendMessage({
             type: 'toggleProcess',
             enabled: newState
-        }, response => {
+        }, (response) => {
             if (response && response.success) {
-                input.checked = newState;
-                if (newState) {
-                    slider.style.background = '#4CAF50';
-                    slider.style.boxShadow = '0 0 10px rgba(76, 175, 80, 0.3)';
-                    knob.style.left = '27px';
-                    statusText.textContent = 'ON';
-                    statusText.style.color = '#4CAF50';
-                    messageContainer.textContent = 'Processing started - Analyzing emotions...';
-                    messageContainer.style.color = '#4CAF50';
-                } else {
-                    slider.style.background = '#2196F3';
-                    slider.style.boxShadow = '0 0 5px rgba(33, 150, 243, 0.3)';
-                    knob.style.left = '3px';
-                    statusText.textContent = 'OFF';
-                    statusText.style.color = '#2196F3';
-                    messageContainer.textContent = 'Processing stopped';
-                    messageContainer.style.color = '#fff';
+                updateToggleState(input, slider, statusText, messageContainer, newState);
+                
+                // Handle session end when turning OFF
+                if (!newState) {
+                    handleSessionEnd(messageContainer);
                 }
             } else {
-                input.checked = false;
-                slider.style.background = '#ff5252';
-                slider.style.boxShadow = '0 0 10px rgba(255, 82, 82, 0.3)';
-                messageContainer.textContent = 'Failed to ' + (newState ? 'start' : 'stop') + ' process';
-                messageContainer.style.color = '#ff5252';
-                console.error('Toggle failed:', response);
+                handleToggleError(input, slider, messageContainer, newState);
             }
         });
     };
+}
 
-    // Event listeners
-    slider.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleToggle();
+/**
+ * Update visual state of toggle control
+ */
+function updateToggleState(input, slider, statusText, messageContainer, isOn) {
+    input.checked = isOn;
+    
+    if (isOn) {
+        // ON state - green
+        slider.style.background = '#4CAF50';
+        slider.style.boxShadow = '0 0 10px rgba(76, 175, 80, 0.3)';
+        slider.firstChild.style.left = '27px'; // knob position
+        statusText.textContent = 'ON';
+        statusText.style.color = '#4CAF50';
+        messageContainer.textContent = 'Analyzing emotions...';
+        messageContainer.style.color = '#4CAF50';
+    } else {
+        // OFF state - blue
+        slider.style.background = '#2196F3';
+        slider.style.boxShadow = '0 0 5px rgba(33, 150, 243, 0.3)';
+        slider.firstChild.style.left = '3px'; // knob position
+        statusText.textContent = 'OFF';
+        statusText.style.color = '#2196F3';
+        messageContainer.textContent = 'Generating summary...';
+        messageContainer.style.color = '#fff';
+    }
+}
+
+/**
+ * Handle session end when toggling OFF
+ */
+function handleSessionEnd(messageContainer) {
+    console.log('Ending session after toggle OFF...');
+    
+    chrome.runtime.sendMessage({ type: 'endSession' }, (response) => {
+        if (response && response.success) {
+            messageContainer.textContent = 'Summary generated - Processing stopped';
+            messageContainer.style.color = '#4CAF50';
+            console.log('Session ended successfully');
+            
+            // Open HTML report if available
+            if (response.result && response.result.html_report_url) {
+                window.open(response.result.html_report_url, '_blank');
+            }
+        } else {
+            messageContainer.textContent = 'Processing stopped (summary generation failed)';
+            messageContainer.style.color = '#ff9800';
+            console.error('Failed to end session:', response?.error);
+        }
     });
+}
 
-    // Touch event support
-    slider.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        slider.style.transform = 'scale(0.95)';
-    });
+/**
+ * Handle toggle operation errors
+ */
+function handleToggleError(input, slider, messageContainer, attemptedState) {
+    input.checked = false;
+    slider.style.background = '#ff5252';
+    slider.style.boxShadow = '0 0 10px rgba(255, 82, 82, 0.3)';
+    messageContainer.textContent = `Failed to ${attemptedState ? 'start' : 'stop'} process`;
+    messageContainer.style.color = '#ff5252';
+}
 
-    slider.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        slider.style.transform = 'scale(1)';
-        handleToggle();
-    });
-
-    label.setAttribute('tabindex', '0');
-    label.setAttribute('role', 'switch');
-    label.setAttribute('aria-checked', 'false');
-
-    // Assemble the switch
-    label.appendChild(input);
-    label.appendChild(slider);
-    label.appendChild(statusText);
-    switchContainer.appendChild(label);
-
-    // Assemble the panel
-    guiFrame.appendChild(topBar);
-    guiFrame.appendChild(messageContainer);
-    guiFrame.appendChild(switchContainer);
-    document.body.appendChild(guiFrame);
-
-    // Enhanced message listener for backend communication
+/**
+ * Setup message listeners for backend communication
+ */
+function setupMessageListeners(panel, messageContainer) {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         switch(message.type) {
             case 'beforeScreenshot':
-                guiFrame.style.opacity = '0';
-                guiFrame.style.visibility = 'hidden';
-                guiFrame.style.pointerEvents = 'none';
+                hidePanel(panel);
                 sendResponse({ hidden: true });
                 break;
 
             case 'afterScreenshot':
-                requestAnimationFrame(() => {
-                    guiFrame.style.opacity = '0.95';
-                    guiFrame.style.visibility = 'visible';
-                    guiFrame.style.pointerEvents = 'auto';
-                });
+                showPanel(panel);
                 sendResponse({ shown: true });
                 break;
 
             case 'emotionDetected':
-                const emotion = message.emotion || 'unknown';
-                messageContainer.textContent = `Detected Emotion: ${emotion.toUpperCase()}`;
-                messageContainer.style.color = '#4CAF50';
-                messageContainer.style.fontWeight = 'bold';
+                displayEmotion(messageContainer, message.emotion);
                 sendResponse({ displayed: true });
                 break;
 
             case 'error':
-                messageContainer.textContent = message.message || 'An error occurred';
-                messageContainer.style.color = '#ff5252';
-                slider.style.background = '#ff5252';
+                displayError(messageContainer, message.message);
                 sendResponse({ displayed: true });
                 break;
 
             case 'processStopped':
-                input.checked = false;
-                slider.style.background = '#2196F3';
-                knob.style.left = '3px';
-                statusText.textContent = 'OFF';
-                statusText.style.color = '#2196F3';
-                messageContainer.textContent = 'Process stopped';
-                messageContainer.style.color = '#fff';
+                resetToOffState(messageContainer);
                 sendResponse({ handled: true });
                 break;
         }
         return true;
     });
+}
 
-    // Return the message container for external updates
-    return messageContainer;
-};
+/**
+ * Utility functions for panel visibility and state management
+ */
 
-// Optionally, remove the old auto-run logic so the panel only appears when showMoodLinkPanel() is called
+function hidePanel(panel) {
+    Object.assign(panel.style, {
+        opacity: '0',
+        visibility: 'hidden',
+        pointerEvents: 'none'
+    });
+}
+
+function showPanel(panel) {
+    requestAnimationFrame(() => {
+        Object.assign(panel.style, {
+            opacity: '0.95',
+            visibility: 'visible',
+            pointerEvents: 'auto'
+        });
+    });
+}
+
+function displayEmotion(container, emotion) {
+    container.textContent = `Detected: ${emotion.toUpperCase()}`;
+    container.style.color = '#4CAF50';
+    container.style.fontWeight = 'bold';
+}
+
+function displayError(container, message) {
+    container.textContent = message || 'An error occurred';
+    container.style.color = '#ff5252';
+}
+
+function resetToOffState(container) {
+    const toggle = document.getElementById('moodlink-toggle');
+    const slider = toggle?.parentElement.querySelector('span');
+    const statusText = toggle?.parentElement.querySelector('span:last-child');
+    
+    if (toggle && slider && statusText) {
+        toggle.checked = false;
+        slider.style.background = '#2196F3';
+        slider.firstChild.style.left = '3px';
+        statusText.textContent = 'OFF';
+        statusText.style.color = '#2196F3';
+    }
+    
+    container.textContent = 'Process stopped';
+    container.style.color = '#fff';
+}

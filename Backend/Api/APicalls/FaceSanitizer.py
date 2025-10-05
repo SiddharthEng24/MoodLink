@@ -56,8 +56,8 @@ class FaceSanitizer:
         - OpenCV's built-in Haar cascades: cv2.data.haarcascades
         - Viola-Jones face detection algorithm (2001)
         """
-        # Load OpenCV's pre-trained Haar cascade for face detection
-        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        # Try to load the Haar cascade from absolute path first  
+        cascade_path = "/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Backend/Api/APicalls/haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
         
         # Backup: try alternative cascade if the first one fails
@@ -90,7 +90,6 @@ class FaceSanitizer:
             # Read the image
             image = cv2.imread(image_path)
             if image is None:
-                print(f"Could not load image: {image_path}")
                 return image_path
             
             # Convert to grayscale for face detection
@@ -106,7 +105,6 @@ class FaceSanitizer:
             )
             
             if len(faces) == 0:
-                print("No faces detected in the image")
                 return image_path
             
             # Get the largest face (assuming it's the main subject)
@@ -142,14 +140,9 @@ class FaceSanitizer:
             # Save the cropped face
             cv2.imwrite(output_path, face_crop)
             
-            print(f"Face detected and cropped: {output_path}")
-            print(f"Original size: {image.shape[1]}x{image.shape[0]}")
-            print(f"Cropped size: {face_crop.shape[1]}x{face_crop.shape[0]}")
-            
             return output_path
             
         except Exception as e:
-            print(f"Error in face detection/cropping: {str(e)}")
             return image_path
     
     def sanitize_image(self, image_path):
@@ -179,7 +172,6 @@ class FaceSanitizer:
             # Read the image
             image = cv2.imread(image_path)
             if image is None:
-                print(f"Could not load image: {image_path}")
                 return []
             
             # Convert to grayscale for face detection
@@ -194,7 +186,6 @@ class FaceSanitizer:
             )
             
             if len(faces) == 0:
-                print("No faces detected in the image")
                 return []
             
             # Create output directory if not provided
@@ -225,11 +216,9 @@ class FaceSanitizer:
                 cv2.imwrite(output_path, face_crop)
                 cropped_faces.append(output_path)
             
-            print(f"Detected and cropped {len(faces)} faces")
             return cropped_faces
             
         except Exception as e:
-            print(f"Error in multiple face detection: {str(e)}")
             return []
 
 

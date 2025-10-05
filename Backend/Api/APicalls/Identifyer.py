@@ -94,7 +94,6 @@ def identify(image_path):
         return f"{emoji} {predicted_emotion} ({percentage:.1f}%)"
         
     except Exception as e:
-        print(f"Error in emotion detection: {str(e)}")
         # Return a random emotion for testing with emoji
         import random
         test_emotions = [

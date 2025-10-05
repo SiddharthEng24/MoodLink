@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Screenshot Extension",
+  "name": "MoodLink",
   "version": "1.0",
-  "description": "Takes screenshots and sends them to API.",
+  "description": "It identifies the mood of the meeting attendies when turned on and at the end gives a meeting summary in the end.",
   "background": {
     "service_worker": "background.js"
   },

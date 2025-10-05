@@ -1,198 +1,280 @@
-// API endpoint - change this to your actual API URL
+// MoodLink Chrome Extension - Background Script
+// Handles screenshot capture, API communication, and session management
+
+// Configuration
 const API_ENDPOINT = 'http://localhost:8000/api/';
-const END_SESSION_ENDPOINT = 'http://localhost:8000/api/end-session/';
+const SCREENSHOT_INTERVAL = 3000; // 3 seconds between captures
+
+// State management
 let isProcessing = false;
 let processingTab = null;
 
-// Listen for messages from the GUI
+/**
+ * Message handler for GUI communication
+ * Handles: toggleProcess, endSession
+ */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'toggleProcess') {
-        isProcessing = message.enabled;
-        if (isProcessing) {
-            processingTab = sender.tab;
-            startProcessing(sender.tab);
-            sendResponse({ success: true, status: 'started' });
-        } else {
-<<<<<<< HEAD
-            // When stopping, end the meeting session
-            endMeetingSession(sender.tab);
-        }
-        sendResponse({ success: true });
-    } else if (message.type === 'endSession') {
-        // Handle explicit session end request
-        endMeetingSession(sender.tab);
-        sendResponse({ success: true });
-=======
-            stopProcessing();
-            sendResponse({ success: true, status: 'stopped' });
-        }
-        return true;
->>>>>>> refs/remotes/origin/main
+    switch (message.type) {
+        case 'toggleProcess':
+            handleToggleProcess(message, sender, sendResponse);
+            return true; // Async response
+            
+        case 'endSession':
+            handleEndSession(sendResponse);
+            return true; // Async response
+            
+        default:
+            console.warn('Unknown message type:', message.type);
+            sendResponse({ success: false, error: 'Unknown message type' });
     }
 });
 
-// Take screenshot and send to API when extension icon is clicked
-chrome.action.onClicked.addListener(async (tab) => {
-    // First, inject the GUI script into the page
-    await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['GUI.js']
-    });
+/**
+ * Handle process toggle (start/stop emotion detection)
+ */
+function handleToggleProcess(message, sender, sendResponse) {
+    isProcessing = message.enabled;
+    
+    if (isProcessing) {
+        processingTab = sender.tab;
+        startProcessing(sender.tab);
+        sendResponse({ success: true, status: 'started' });
+    } else {
+        stopProcessing();
+        sendResponse({ success: true, status: 'stopped' });
+    }
+}
 
-    // Show the GUI panel
-    await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: () => {
-            if (typeof window.showMoodLinkPanel === 'function') {
-                window.showMoodLinkPanel();
+/**
+ * Handle session end request
+ */
+function handleEndSession(sendResponse) {
+    console.log('Processing end session request...');
+    
+    endMeetingSession()
+        .then(result => {
+            console.log('Meeting session ended successfully:', result);
+            
+            // Open HTML report in new tab if available
+            if (result && result.html_report_url) {
+                chrome.tabs.create({
+                    url: result.html_report_url,
+                    active: true
+                }, (tab) => {
+                    console.log('HTML report opened in new tab:', tab.id);
+                });
             }
-        }
-    });
+            
+            if (sendResponse) {
+                sendResponse({ success: true, result: result });
+            }
+        })
+        .catch(error => {
+            console.error('Failed to end meeting session:', error);
+            if (sendResponse) {
+                sendResponse({ success: false, error: error.message });
+            }
+        });
+}
+
+/**
+ * Extension icon click handler - shows GUI
+ */
+chrome.action.onClicked.addListener(async (tab) => {
+    try {
+        // Inject GUI script
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ['GUI.js']
+        });
+
+        // Show GUI panel
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            function: () => {
+                if (typeof window.showMoodLinkPanel === 'function') {
+                    window.showMoodLinkPanel();
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Failed to inject GUI:', error);
+    }
 });
 
+/**
+ * Main processing loop - captures screenshots and analyzes emotions
+ */
 async function startProcessing(tab) {
+    console.log('Starting emotion detection processing...');
+    
     while (isProcessing) {
         try {
+            // Validate tab
             if (!tab || !tab.id) {
                 console.error('Invalid tab');
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await sleep(1000);
                 continue;
             }
 
-            // Check if we can capture this tab (avoid restricted URLs)
-            if (tab.url && (tab.url.startsWith('chrome://') ||
-                tab.url.startsWith('chrome-extension://') ||
-                tab.url.startsWith('edge://') ||
-                tab.url.startsWith('about:'))) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            // Skip restricted URLs
+            if (isRestrictedUrl(tab.url)) {
+                await sleep(1000);
                 continue;
             }
 
-            // Quick hide -> capture -> show sequence
-            await chrome.tabs.sendMessage(tab.id, { type: 'beforeScreenshot' });
-
-            // Capture immediately after GUI is hidden
-            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
-                format: 'png',
-                quality: 100
-            });
-
-            // Show GUI immediately after capture
-            chrome.tabs.sendMessage(tab.id, { type: 'afterScreenshot' });
-
-            try {
-                // Convert and send to API
-                const response = await fetch(dataUrl);
-                const blob = await response.blob();
-                const formData = new FormData();
-                formData.append('screenshot', blob, `screenshot-${Date.now()}.png`);
-
-                const apiResponse = await fetch(API_ENDPOINT, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!apiResponse.ok) {
-                    throw new Error(`API responded with status: ${apiResponse.status}`);
-                }
-
-                // Parse the emotion response
-                const result = await apiResponse.json();
-                if (result && result.emotion) {
-                    // Send emotion back to GUI
-                    chrome.tabs.sendMessage(tab.id, {
-                        type: 'emotionDetected',
-                        emotion: result.emotion
-                    });
-                }
-            } catch (apiError) {
-                console.error('API Error:', apiError);
-                chrome.tabs.sendMessage(tab.id, {
-                    type: 'error',
-                    message: 'Failed to process image'
-                });
-            }
-
-            // Shorter interval between captures
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Capture and process screenshot
+            await captureAndProcessScreenshot(tab);
+            
+            // Wait before next capture
+            await sleep(SCREENSHOT_INTERVAL);
+            
         } catch (error) {
-            console.error('Processing Error:', error);
-            if (tab && tab.id) {
-                chrome.tabs.sendMessage(tab.id, {
-                    type: 'error',
-                    message: 'Processing error occurred'
-                });
-            }
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.error('Processing error:', error);
+            notifyError(tab, 'Processing error occurred');
+            await sleep(1000);
         }
     }
+    
+    console.log('Emotion detection processing stopped');
 }
 
-function stopProcessing() {
-    isProcessing = false;
-    if (processingTab && processingTab.id) {
-        chrome.tabs.sendMessage(processingTab.id, {
-            type: 'processStopped'
-        }).catch(() => {
-            // Ignore any errors if the tab is already closed
-            console.log('Tab already closed or unreachable');
-        });
-    }
-    processingTab = null;
-}
-
-async function endMeetingSession(tab) {
+/**
+ * Capture screenshot and send to API for emotion analysis
+ */
+async function captureAndProcessScreenshot(tab) {
     try {
-        console.log('Ending meeting session and generating summary...');
+        // Hide GUI temporarily
+        await sendTabMessage(tab.id, { type: 'beforeScreenshot' });
+
+        // Capture screenshot
+        const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+            format: 'png',
+            quality: 100
+        });
+
+        // Show GUI again
+        await sendTabMessage(tab.id, { type: 'afterScreenshot' });
+
+        // Process with API
+        await sendScreenshotToAPI(tab, dataUrl);
         
-        // Notify GUI that session is ending
-        try {
-            await chrome.tabs.sendMessage(tab.id, {
-                type: 'sessionEnding',
-                message: 'Generating meeting summary...'
+    } catch (error) {
+        console.error('Screenshot capture failed:', error);
+        notifyError(tab, 'Failed to capture screenshot');
+    }
+}
+
+/**
+ * Send screenshot to Django API for emotion detection
+ */
+async function sendScreenshotToAPI(tab, dataUrl) {
+    try {
+        // Convert data URL to blob
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('screenshot', blob, `screenshot-${Date.now()}.png`);
+
+        // Send to API
+        const apiResponse = await fetch(API_ENDPOINT, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!apiResponse.ok) {
+            throw new Error(`API error: ${apiResponse.status}`);
+        }
+
+        // Process response
+        const result = await apiResponse.json();
+        if (result && result.emotion) {
+            await sendTabMessage(tab.id, {
+                type: 'emotionDetected',
+                emotion: result.emotion
             });
-        } catch (e) {
-            console.log('Could not send sessionEnding message:', e.message);
         }
         
-        // Call end session API
-        const response = await fetch(END_SESSION_ENDPOINT, {
+    } catch (error) {
+        console.error('API communication failed:', error);
+        notifyError(tab, 'Failed to process emotion');
+    }
+}
+
+/**
+ * End meeting session and generate AI summary
+ */
+async function endMeetingSession() {
+    try {
+        console.log('Calling end session API...');
+        
+        const response = await fetch(API_ENDPOINT + 'end-session/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            }
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({})
         });
         
         if (!response.ok) {
-            throw new Error(`End session request failed: ${response.status}`);
+            const errorText = await response.text();
+            throw new Error(`API error ${response.status}: ${errorText}`);
         }
         
         const result = await response.json();
         console.log('Session ended successfully:', result);
-        
-        // Notify GUI with summary
-        try {
-            await chrome.tabs.sendMessage(tab.id, {
-                type: 'sessionEnded',
-                summary: result.summary,
-                sessionData: result.session_data,
-                deletedFiles: result.deleted_files
-            });
-        } catch (e) {
-            console.log('Could not send sessionEnded message:', e.message);
-        }
+        return result;
         
     } catch (error) {
-        console.error('Error ending meeting session:', error);
-        
-        // Notify GUI of error
-        try {
-            await chrome.tabs.sendMessage(tab.id, {
-                type: 'sessionError',
-                error: error.message
-            });
-        } catch (e) {
-            console.log('Could not send sessionError message:', e.message);
-        }
+        console.error('End session failed:', error);
+        throw error;
     }
+}
+
+/**
+ * Stop emotion detection processing
+ */
+function stopProcessing() {
+    isProcessing = false;
+    
+    if (processingTab && processingTab.id) {
+        sendTabMessage(processingTab.id, { type: 'processStopped' })
+            .catch(() => console.log('Tab already closed'));
+    }
+    
+    processingTab = null;
+}
+
+/**
+ * Utility functions
+ */
+
+function isRestrictedUrl(url) {
+    if (!url) return true;
+    
+    const restrictedPrefixes = [
+        'chrome://', 'chrome-extension://', 'edge://', 'about:'
+    ];
+    
+    return restrictedPrefixes.some(prefix => url.startsWith(prefix));
+}
+
+async function sendTabMessage(tabId, message) {
+    return chrome.tabs.sendMessage(tabId, message);
+}
+
+function notifyError(tab, message) {
+    if (tab && tab.id) {
+        sendTabMessage(tab.id, {
+            type: 'error',
+            message: message
+        }).catch(() => {});
+    }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
