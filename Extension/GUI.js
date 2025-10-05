@@ -25,6 +25,62 @@ window.showMoodLinkPanel = function() {
     guiFrame.style.flexDirection = 'column';
     guiFrame.style.justifyContent = 'space-between';
 
+    // --- Top bar with close button ---
+    const topBar = document.createElement('div');
+    topBar.style.display = 'flex';
+    topBar.style.justifyContent = 'flex-end';
+    topBar.style.alignItems = 'center';
+    topBar.style.height = '28px';
+    topBar.style.marginBottom = '10px';
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Close';
+    closeBtn.style.background = 'transparent';
+    closeBtn.style.border = 'none';
+    closeBtn.style.color = '#aaa';
+    closeBtn.style.fontSize = '20px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.borderRadius = '50%';
+    closeBtn.style.width = '28px';
+    closeBtn.style.height = '28px';
+    closeBtn.style.display = 'flex';
+    closeBtn.style.alignItems = 'center';
+    closeBtn.style.justifyContent = 'center';
+    closeBtn.style.transition = 'background 0.2s, color 0.2s';
+
+    closeBtn.addEventListener('mouseenter', () => {
+        closeBtn.style.color = '#fff';
+        closeBtn.style.background = '#e53935';
+    });
+    closeBtn.addEventListener('mouseleave', () => {
+        closeBtn.style.color = '#aaa';
+        closeBtn.style.background = 'transparent';
+    });
+
+    // Updated close button click handler
+    closeBtn.addEventListener('click', () => {
+        // First, stop any ongoing processing
+        chrome.runtime.sendMessage({
+            type: 'toggleProcess',
+            enabled: false
+        }, response => {
+            // Remove the GUI after ensuring processing is stopped
+            if (input.checked) {
+                input.checked = false;
+                slider.style.background = '#2196F3';
+                knob.style.left = '3px';
+                statusText.textContent = 'OFF';
+                statusText.style.color = '#2196F3';
+            }
+            // Remove the panel
+            guiFrame.remove();
+        });
+    });
+
+    topBar.appendChild(closeBtn);
+
     // Message container for status updates
     const messageContainer = document.createElement('div');
     messageContainer.id = 'moodlink-message';
@@ -37,6 +93,12 @@ window.showMoodLinkPanel = function() {
     messageContainer.style.alignItems = 'center';
     messageContainer.style.justifyContent = 'center';
     messageContainer.textContent = 'Ready to detect emotions...';
+
+    // Update the message container style for better visibility
+    messageContainer.style.padding = '10px';
+    messageContainer.style.margin = '10px 0';
+    messageContainer.style.borderRadius = '8px';
+    messageContainer.style.backgroundColor = 'rgba(0,0,0,0.2)';
 
     // Switch container
     const switchContainer = document.createElement('div');
@@ -103,9 +165,11 @@ window.showMoodLinkPanel = function() {
         slider.style.transform = 'scale(1)';
     });
 
-    // Toggle handler with animation
+    // Enhanced toggle handler with proper status updates
     const handleToggle = () => {
         const newState = !input.checked;
+        messageContainer.textContent = newState ? 'Connecting to backend...' : 'Stopping...';
+
         chrome.runtime.sendMessage({
             type: 'toggleProcess',
             enabled: newState
@@ -118,21 +182,23 @@ window.showMoodLinkPanel = function() {
                     knob.style.left = '27px';
                     statusText.textContent = 'ON';
                     statusText.style.color = '#4CAF50';
-                    messageContainer.textContent = 'Process started...';
-
-                    // Add success animation
-                    slider.style.transform = 'scale(1.05)';
-                    setTimeout(() => slider.style.transform = 'scale(1)', 200);
+                    messageContainer.textContent = 'Processing started - Analyzing emotions...';
+                    messageContainer.style.color = '#4CAF50';
                 } else {
                     slider.style.background = '#2196F3';
                     slider.style.boxShadow = '0 0 5px rgba(33, 150, 243, 0.3)';
                     knob.style.left = '3px';
                     statusText.textContent = 'OFF';
                     statusText.style.color = '#2196F3';
-                    messageContainer.textContent = 'Process stopped';
+                    messageContainer.textContent = 'Processing stopped';
+                    messageContainer.style.color = '#fff';
                 }
             } else {
+                input.checked = false;
+                slider.style.background = '#ff5252';
+                slider.style.boxShadow = '0 0 10px rgba(255, 82, 82, 0.3)';
                 messageContainer.textContent = 'Failed to ' + (newState ? 'start' : 'stop') + ' process';
+                messageContainer.style.color = '#ff5252';
                 console.error('Toggle failed:', response);
             }
         });
@@ -167,36 +233,57 @@ window.showMoodLinkPanel = function() {
     switchContainer.appendChild(label);
 
     // Assemble the panel
+    guiFrame.appendChild(topBar);
     guiFrame.appendChild(messageContainer);
     guiFrame.appendChild(switchContainer);
     document.body.appendChild(guiFrame);
 
-    // Add screenshot message listener to temporarily hide GUI
+    // Enhanced message listener for backend communication
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        console.log('GUI received message:', message);
-        
-        if (message.type === 'beforeScreenshot') {
-            // Hide the GUI
-            guiFrame.style.visibility = 'hidden';
-            // Let background script know we're ready
-            sendResponse({ hidden: true });
-        } else if (message.type === 'afterScreenshot') {
-            // Show the GUI again after screenshot
-            guiFrame.style.visibility = 'visible';
-            sendResponse({ shown: true });
-        } else if (message.type === 'emotionDetected') {
-            // Display the detected emotion
-            const emotion = message.emotion || 'unknown';
-            console.log('Displaying emotion:', emotion);
-            
-            // Update the message container with the emotion
-            messageContainer.textContent = `Emotion: ${emotion.toUpperCase()}`;
-            messageContainer.style.color = '#4CAF50'; // Green color for detected emotion
-            messageContainer.style.fontWeight = 'bold';
-            
-            sendResponse({ displayed: true });
+        switch(message.type) {
+            case 'beforeScreenshot':
+                guiFrame.style.opacity = '0';
+                guiFrame.style.visibility = 'hidden';
+                guiFrame.style.pointerEvents = 'none';
+                sendResponse({ hidden: true });
+                break;
+
+            case 'afterScreenshot':
+                requestAnimationFrame(() => {
+                    guiFrame.style.opacity = '0.95';
+                    guiFrame.style.visibility = 'visible';
+                    guiFrame.style.pointerEvents = 'auto';
+                });
+                sendResponse({ shown: true });
+                break;
+
+            case 'emotionDetected':
+                const emotion = message.emotion || 'unknown';
+                messageContainer.textContent = `Detected Emotion: ${emotion.toUpperCase()}`;
+                messageContainer.style.color = '#4CAF50';
+                messageContainer.style.fontWeight = 'bold';
+                sendResponse({ displayed: true });
+                break;
+
+            case 'error':
+                messageContainer.textContent = message.message || 'An error occurred';
+                messageContainer.style.color = '#ff5252';
+                slider.style.background = '#ff5252';
+                sendResponse({ displayed: true });
+                break;
+
+            case 'processStopped':
+                input.checked = false;
+                slider.style.background = '#2196F3';
+                knob.style.left = '3px';
+                statusText.textContent = 'OFF';
+                statusText.style.color = '#2196F3';
+                messageContainer.textContent = 'Process stopped';
+                messageContainer.style.color = '#fff';
+                sendResponse({ handled: true });
+                break;
         }
-        return true; // Keep message channel open for async response
+        return true;
     });
 
     // Return the message container for external updates
