@@ -25,6 +25,34 @@ window.showMoodLinkPanel = function() {
     guiFrame.style.flexDirection = 'column';
     guiFrame.style.justifyContent = 'space-between';
 
+    // Close button
+    const closeButton = document.createElement('div');
+    closeButton.style.position = 'absolute';
+    closeButton.style.top = '10px';
+    closeButton.style.right = '10px';
+    closeButton.style.width = '20px';
+    closeButton.style.height = '20px';
+    closeButton.style.backgroundColor = '#ff4444';
+    closeButton.style.borderRadius = '50%';
+    closeButton.style.cursor = 'pointer';
+    closeButton.style.display = 'flex';
+    closeButton.style.alignItems = 'center';
+    closeButton.style.justifyContent = 'center';
+    closeButton.style.color = '#fff';
+    closeButton.style.fontSize = '14px';
+    closeButton.style.fontWeight = 'bold';
+    closeButton.textContent = '×';
+    closeButton.title = 'End session and generate summary';
+    
+    closeButton.addEventListener('click', () => {
+        // Send end session message
+        chrome.runtime.sendMessage({
+            type: 'endSession'
+        }, response => {
+            console.log('End session response:', response);
+        });
+    });
+
     // Message container for status updates
     const messageContainer = document.createElement('div');
     messageContainer.id = 'moodlink-message';
@@ -167,6 +195,7 @@ window.showMoodLinkPanel = function() {
     switchContainer.appendChild(label);
 
     // Assemble the panel
+    guiFrame.appendChild(closeButton);
     guiFrame.appendChild(messageContainer);
     guiFrame.appendChild(switchContainer);
     document.body.appendChild(guiFrame);
@@ -195,6 +224,46 @@ window.showMoodLinkPanel = function() {
             messageContainer.style.fontWeight = 'bold';
             
             sendResponse({ displayed: true });
+        } else if (message.type === 'sessionEnding') {
+            // Show session ending message
+            messageContainer.textContent = message.message || 'Generating meeting summary...';
+            messageContainer.style.color = '#FFA500'; // Orange color for processing
+            messageContainer.style.fontWeight = 'bold';
+            
+            // Disable the toggle
+            input.disabled = true;
+            slider.style.opacity = '0.5';
+            
+            sendResponse({ acknowledged: true });
+        } else if (message.type === 'sessionEnded') {
+            // Show summary and close panel after delay
+            messageContainer.textContent = 'Meeting summary generated! Check console for details.';
+            messageContainer.style.color = '#4CAF50'; // Green for success
+            messageContainer.style.fontWeight = 'bold';
+            
+            console.log('=== MEETING SUMMARY ===');
+            console.log('Session Data:', message.sessionData);
+            console.log('Summary:', message.summary);
+            console.log('Deleted Files:', message.deletedFiles);
+            console.log('=== END SUMMARY ===');
+            
+            // Close panel after 3 seconds
+            setTimeout(() => {
+                guiFrame.remove();
+            }, 3000);
+            
+            sendResponse({ acknowledged: true });
+        } else if (message.type === 'sessionError') {
+            // Show error message
+            messageContainer.textContent = `Error: ${message.error}`;
+            messageContainer.style.color = '#ff4444'; // Red for error
+            messageContainer.style.fontWeight = 'bold';
+            
+            // Re-enable the toggle
+            input.disabled = false;
+            slider.style.opacity = '1';
+            
+            sendResponse({ acknowledged: true });
         }
         return true; // Keep message channel open for async response
     });
