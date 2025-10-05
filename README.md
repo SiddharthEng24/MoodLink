@@ -13,7 +13,7 @@ MoodLink is a **Chrome extension** that analyzes the **facial expressions** of t
 
 - Currently supports **one-on-one meetings**.  
 - Uses a **trained machine learning model** to detect emotional states such as **happy, sad, confused, bored,** or **neutral**.  
-- While the extension is toggled on, it provides **real-time mood updates** every 6 seconds.  
+- While the extension is toggled on, it provides **real-time mood updates** every 3 seconds.  
 - When toggled off, it generates a **summary report** as a **pie chart**, showing the proportions of different moods observed during the session.
 
 ---
