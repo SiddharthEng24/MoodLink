@@ -239,3 +239,96 @@ def serve_html_report(request, filename):
             'error': f'Failed to serve report: {str(e)}'
         }, status=500)
         return add_cors_headers(response)
+
+
+@csrf_exempt
+@require_http_methods(["POST", "OPTIONS"])
+def cleanup_all_files(request):
+    """
+    Immediately cleanup all files and reset session when close button is pressed.
+    
+    This endpoint provides immediate cleanup without generating reports.
+    Used when user closes the extension UI.
+    """
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return handle_cors_preflight(request)
+    
+    try:
+        print("Immediate cleanup requested...")
+        
+        # Force cleanup using meeting tracker
+        if hasattr(meeting_tracker, 'current_session') and meeting_tracker.current_session:
+            deleted_count = meeting_tracker.current_session.cleanup_files()
+            # Reset the session
+            meeting_tracker.current_session = None
+        else:
+            # If no active session, still do general cleanup
+            deleted_count = cleanup_orphaned_files()
+        
+        # Reset global counter
+        global screenshot_counter
+        screenshot_counter = 0
+        
+        response = JsonResponse({
+            'success': True,
+            'message': 'All files cleaned up successfully',
+            'files_deleted': deleted_count,
+            'session_reset': True
+        })
+        return add_cors_headers(response)
+        
+    except Exception as e:
+        print(f"Cleanup error: {str(e)}")
+        response = JsonResponse({
+            'success': False,
+            'error': f'Cleanup failed: {str(e)}'
+        }, status=500)
+        return add_cors_headers(response)
+
+
+def cleanup_orphaned_files():
+    """
+    Clean up orphaned files when no active session exists.
+    """
+    deleted_count = 0
+    
+    # Clean up Testimages directory
+    testimages_dir = "/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages"
+    try:
+        if os.path.exists(testimages_dir):
+            for filename in os.listdir(testimages_dir):
+                # Delete all image files but preserve HTML reports
+                if (filename.startswith("screenshot_") and filename.endswith(".png")) or \
+                   (filename.startswith("face_") and filename.endswith(".png")):
+                    file_path = os.path.join(testimages_dir, filename)
+                    try:
+                        os.remove(file_path)
+                        deleted_count += 1
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    
+    # Clean up Sanitized directory
+    sanitized_dir = "/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/Sanitized"
+    try:
+        if os.path.exists(sanitized_dir):
+            for filename in os.listdir(sanitized_dir):
+                file_path = os.path.join(sanitized_dir, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                        deleted_count += 1
+                except Exception:
+                    pass
+            
+            # Remove directory if empty
+            try:
+                os.rmdir(sanitized_dir)
+            except OSError:
+                pass
+    except Exception:
+        pass
+    
+    return deleted_count

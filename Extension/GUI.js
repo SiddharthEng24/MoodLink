@@ -1,6 +1,15 @@
 // MoodLink Chrome Extension - GUI Panel
 // Provides user interface for emotion detection control
 
+// UI State management
+let isUIProcessing = false;
+let isGeneratingReport = false;
+let panelClosed = false;
+
+/**
+ * Main function to create and show the MoodLink panel
+ * Creates a dark-themed floating panel with emotion detection controls
+ */
 /**
  * Main function to create and show the MoodLink panel
  * Creates a dark-themed floating panel with emotion detection controls
@@ -9,6 +18,11 @@ window.showMoodLinkPanel = function() {
     // Remove existing panel if present
     const existingPanel = document.getElementById('moodlink-extension-panel');
     if (existingPanel) existingPanel.remove();
+
+    // Reset UI state when creating new panel
+    isUIProcessing = false;
+    isGeneratingReport = false;
+    panelClosed = false;
 
     // Create and configure main panel
     const panel = createMainPanel();
@@ -129,29 +143,56 @@ function createCloseButton() {
 }
 
 /**
- * Handle close button click - stop processing and end session
+ * Handle close button click - cleanup all files and close UI panel
  */
 function handleCloseButtonClick() {
-    console.log('Close button clicked - ending session...');
+    console.log('Close button clicked - cleaning up files and closing UI panel...');
     
-    // Stop processing first
-    chrome.runtime.sendMessage({ type: 'toggleProcess', enabled: false }, () => {
-        // Then end session and remove panel
-        chrome.runtime.sendMessage({ type: 'endSession' }, (response) => {
-            if (response && response.success) {
-                console.log('Session ended successfully');
-                
-                // Open HTML report if available
-                if (response.result && response.result.html_report_url) {
-                    window.open(response.result.html_report_url, '_blank');
-                }
-            } else {
-                console.error('Failed to end session:', response?.error);
+    panelClosed = true;
+    
+    // First call cleanup endpoint to delete all files
+    fetch('http://localhost:8000/api/cleanup/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            console.log(`Cleanup successful: ${result.files_deleted} files deleted`);
+        } else {
+            console.warn('Cleanup failed:', result.error);
+        }
+    })
+    .catch(error => {
+        console.warn('Cleanup request failed:', error);
+    })
+    .finally(() => {
+        // Stop any backend processing
+        chrome.runtime.sendMessage({ type: 'toggleProcess', enabled: false }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.warn('Could not stop backend process:', chrome.runtime.lastError);
             }
             
-            // Remove panel
-            const panel = document.getElementById('moodlink-extension-panel');
-            if (panel) panel.remove();
+            // Then stop any ongoing sessions
+            chrome.runtime.sendMessage({ type: 'stopAllProcessing' }, (response) => {
+                if (chrome.runtime.lastError) {
+                    console.warn('Could not stop session:', chrome.runtime.lastError);
+                }
+                
+                // Finally remove the panel
+                const panel = document.getElementById('moodlink-extension-panel');
+                if (panel) {
+                    panel.remove();
+                }
+                
+                // Reset UI state
+                isUIProcessing = false;
+                isGeneratingReport = false;
+            });
         });
     });
 }
@@ -314,21 +355,40 @@ function createStatusText() {
  */
 function createToggleHandler(input, slider, statusText) {
     return function() {
+        // Prevent multiple clicks during processing
+        if (isGeneratingReport || panelClosed) {
+            return;
+        }
+        
         const newState = !input.checked;
         const messageContainer = document.getElementById('moodlink-message');
         
-        messageContainer.textContent = newState ? 'Connecting to backend...' : 'Stopping...';
+        if (newState) {
+            messageContainer.textContent = 'Connecting to backend...';
+        } else {
+            messageContainer.textContent = 'Stopping...';
+            isGeneratingReport = true;
+            // Disable the toggle during report generation
+            slider.style.pointerEvents = 'none';
+            slider.style.opacity = '0.5';
+        }
 
         chrome.runtime.sendMessage({
             type: 'toggleProcess',
             enabled: newState
         }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.error('Extension context error:', chrome.runtime.lastError);
+                return;
+            }
+            
             if (response && response.success) {
+                isUIProcessing = newState;
                 updateToggleState(input, slider, statusText, messageContainer, newState);
                 
                 // Handle session end when turning OFF
                 if (!newState) {
-                    handleSessionEnd(messageContainer);
+                    handleSessionEnd(messageContainer, slider);
                 }
             } else {
                 handleToggleError(input, slider, messageContainer, newState);
@@ -367,10 +427,26 @@ function updateToggleState(input, slider, statusText, messageContainer, isOn) {
 /**
  * Handle session end when toggling OFF
  */
-function handleSessionEnd(messageContainer) {
+function handleSessionEnd(messageContainer, slider) {
     console.log('Ending session after toggle OFF...');
     
+    messageContainer.textContent = 'Generating summary...';
+    messageContainer.style.color = '#ff9800';
+    
     chrome.runtime.sendMessage({ type: 'endSession' }, (response) => {
+        if (chrome.runtime.lastError) {
+            console.error('Extension context error:', chrome.runtime.lastError);
+            return;
+        }
+        
+        isGeneratingReport = false;
+        
+        // Re-enable the toggle
+        if (slider) {
+            slider.style.pointerEvents = 'auto';
+            slider.style.opacity = '1';
+        }
+        
         if (response && response.success) {
             messageContainer.textContent = 'Summary generated - Processing stopped';
             messageContainer.style.color = '#4CAF50';
@@ -378,7 +454,11 @@ function handleSessionEnd(messageContainer) {
             
             // Open HTML report if available
             if (response.result && response.result.html_report_url) {
-                window.open(response.result.html_report_url, '_blank');
+                try {
+                    window.open(response.result.html_report_url, '_blank');
+                } catch (error) {
+                    console.warn('Could not open report tab:', error);
+                }
             }
         } else {
             messageContainer.textContent = 'Processing stopped (summary generation failed)';
@@ -405,6 +485,12 @@ function handleToggleError(input, slider, messageContainer, attemptedState) {
 function setupMessageListeners(panel, messageContainer) {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         try {
+            // Ignore messages if panel is closed
+            if (panelClosed) {
+                sendResponse({ success: false, error: 'Panel closed' });
+                return;
+            }
+            
             switch(message.type) {
                 case 'beforeScreenshot':
                     // Immediate, aggressive hiding
@@ -423,17 +509,24 @@ function setupMessageListeners(panel, messageContainer) {
                     break;
 
                 case 'emotionDetected':
-                    displayEmotions(messageContainer, message.emotions, message.face_count);
+                    // Only display emotions if we're actively processing and not generating report
+                    if (isUIProcessing && !isGeneratingReport) {
+                        displayEmotions(messageContainer, message.emotions, message.face_count);
+                    }
                     sendResponse({ displayed: true, success: true });
                     break;
 
                 case 'error':
-                    displayError(messageContainer, message.message);
+                    // Only show errors if not generating report
+                    if (!isGeneratingReport) {
+                        displayError(messageContainer, message.message);
+                    }
                     sendResponse({ displayed: true, success: true });
                     break;
 
                 case 'processStopped':
                     resetToOffState(messageContainer);
+                    isUIProcessing = false;
                     sendResponse({ handled: true, success: true });
                     break;
                     

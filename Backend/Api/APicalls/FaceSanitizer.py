@@ -50,20 +50,35 @@ class FaceSanitizer:
         Initialize the Face Sanitizer with OpenCV's pre-trained face detection model.
         
         Uses haarcascade_frontalface_default.xml as primary classifier, with
-        haarcascade_frontalface_alt.xml as fallback.
+        multiple fallback options for reliability.
         
         References:
         - OpenCV's built-in Haar cascades: cv2.data.haarcascades
         - Viola-Jones face detection algorithm (2001)
         """
-        # Try to load the Haar cascade from absolute path first  
-        cascade_path = "/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Backend/Api/APicalls/haarcascade_frontalface_default.xml"
-        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        import os
         
-        # Backup: try alternative cascade if the first one fails
-        if self.face_cascade.empty():
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml'
-            self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        # Try multiple cascade paths in order of preference
+        cascade_paths = [
+            # Local project path
+            os.path.join(os.path.dirname(__file__), 'haarcascade_frontalface_default.xml'),
+            # OpenCV's built-in cascades
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml',
+            cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml',
+            cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
+        ]
+        
+        self.face_cascade = None
+        for cascade_path in cascade_paths:
+            if os.path.exists(cascade_path):
+                temp_cascade = cv2.CascadeClassifier(cascade_path)
+                if not temp_cascade.empty():
+                    self.face_cascade = temp_cascade
+                    print(f"Face detection loaded from: {cascade_path}")
+                    break
+        
+        if self.face_cascade is None or self.face_cascade.empty():
+            raise RuntimeError("Could not load any face detection cascade file")
     
     def detect_and_crop_face(self, image_path, output_path=None, padding=0.2):
         """

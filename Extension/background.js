@@ -8,10 +8,12 @@ const SCREENSHOT_INTERVAL = 3000; // 3 seconds between captures
 // State management
 let isProcessing = false;
 let processingTab = null;
+let isGeneratingReport = false;
+let sessionExists = false;
 
 /**
  * Message handler for GUI communication
- * Handles: toggleProcess, endSession
+ * Handles: toggleProcess, endSession, stopAllProcessing
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
@@ -21,6 +23,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
         case 'endSession':
             handleEndSession(sendResponse);
+            return true; // Async response
+            
+        case 'stopAllProcessing':
+            handleStopAllProcessing(sendResponse);
             return true; // Async response
             
         default:
@@ -33,16 +39,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * Handle process toggle (start/stop emotion detection)
  */
 function handleToggleProcess(message, sender, sendResponse) {
-    isProcessing = message.enabled;
+    const wasProcessing = isProcessing;
+    const newState = message.enabled;
     
-    if (isProcessing) {
+    if (newState && !wasProcessing) {
+        // Starting new session
+        isProcessing = true;
         processingTab = sender.tab;
+        sessionExists = true;
+        isGeneratingReport = false;
         startProcessing(sender.tab);
         sendResponse({ success: true, status: 'started' });
-    } else {
+    } else if (!newState && wasProcessing) {
+        // Stopping session - start report generation
+        isProcessing = false;
+        isGeneratingReport = true;
         stopProcessing();
         sendResponse({ success: true, status: 'stopped' });
+    } else if (!newState && !wasProcessing) {
+        // Already stopped - just confirm
+        isProcessing = false;
+        isGeneratingReport = false;
+        sessionExists = false;
+        sendResponse({ success: true, status: 'already_stopped' });
+    } else {
+        // Already started
+        sendResponse({ success: true, status: 'already_started' });
     }
+}
+
+/**
+ * Handle stop all processing request (from close button)
+ */
+function handleStopAllProcessing(sendResponse) {
+    console.log('Stopping all processing - resetting state...');
+    
+    // Force stop everything
+    isProcessing = false;
+    isGeneratingReport = false;
+    sessionExists = false;
+    
+    // Stop processing tab
+    if (processingTab && processingTab.id) {
+        sendTabMessage(processingTab.id, { type: 'processStopped' })
+            .catch((error) => {
+                if (!error.message.includes('Extension context invalidated')) {
+                    console.log('Tab may be closed or extension context invalid');
+                }
+            });
+    }
+    
+    processingTab = null;
+    
+    sendResponse({ success: true, status: 'all_stopped' });
 }
 
 /**
@@ -51,18 +100,36 @@ function handleToggleProcess(message, sender, sendResponse) {
 function handleEndSession(sendResponse) {
     console.log('Processing end session request...');
     
+    // Only try to end session if one exists
+    if (!sessionExists && !isGeneratingReport) {
+        sendResponse({ success: true, result: { message: 'No active session to end' } });
+        return;
+    }
+    
+    isGeneratingReport = true;
+    
     endMeetingSession()
         .then(result => {
             console.log('Meeting session ended successfully:', result);
+            sessionExists = false;
+            isGeneratingReport = false;
             
             // Open HTML report in new tab if available
             if (result && result.html_report_url) {
-                chrome.tabs.create({
-                    url: result.html_report_url,
-                    active: true
-                }, (tab) => {
-                    console.log('HTML report opened in new tab:', tab.id);
-                });
+                try {
+                    chrome.tabs.create({
+                        url: result.html_report_url,
+                        active: true
+                    }, (tab) => {
+                        if (chrome.runtime.lastError) {
+                            console.warn('Could not open tab:', chrome.runtime.lastError.message);
+                        } else {
+                            console.log('HTML report opened in new tab:', tab.id);
+                        }
+                    });
+                } catch (error) {
+                    console.warn('Extension context may be invalid, cannot open tab:', error);
+                }
             }
             
             if (sendResponse) {
@@ -71,8 +138,18 @@ function handleEndSession(sendResponse) {
         })
         .catch(error => {
             console.error('Failed to end meeting session:', error);
-            if (sendResponse) {
-                sendResponse({ success: false, error: error.message });
+            sessionExists = false;
+            isGeneratingReport = false;
+            
+            // Handle "No active session" as success since it means session is already ended
+            if (error.message && error.message.includes('No active session')) {
+                if (sendResponse) {
+                    sendResponse({ success: true, result: { message: 'Session already ended' } });
+                }
+            } else {
+                if (sendResponse) {
+                    sendResponse({ success: false, error: error.message });
+                }
             }
         });
 }
@@ -229,6 +306,12 @@ async function captureAndProcessScreenshot(tab) {
  * Send screenshot to Django API for emotion detection
  */
 async function sendScreenshotToAPI(tab, dataUrl) {
+    // Don't process if we're not actively processing or generating report
+    if (!isProcessing || isGeneratingReport) {
+        console.log('Skipping API call - processing stopped or generating report');
+        return;
+    }
+    
     try {
         // Convert data URL to blob
         const response = await fetch(dataUrl);
@@ -248,25 +331,29 @@ async function sendScreenshotToAPI(tab, dataUrl) {
             throw new Error(`API error: ${apiResponse.status}`);
         }
 
-        // Process response
-        const result = await apiResponse.json();
-        if (result && result.success) {
-            // Handle both single and multiple emotions
-            const emotions = result.emotions || (result.emotion ? [result.emotion] : []);
-            const faceCount = result.face_count || emotions.length;
-            
-            if (emotions.length > 0) {
-                await sendTabMessage(tab.id, {
-                    type: 'emotionDetected',
-                    emotions: emotions,
-                    face_count: faceCount
-                });
+        // Process response only if still processing
+        if (isProcessing && !isGeneratingReport) {
+            const result = await apiResponse.json();
+            if (result && result.success) {
+                // Handle both single and multiple emotions
+                const emotions = result.emotions || (result.emotion ? [result.emotion] : []);
+                const faceCount = result.face_count || emotions.length;
+                
+                if (emotions.length > 0) {
+                    await sendTabMessage(tab.id, {
+                        type: 'emotionDetected',
+                        emotions: emotions,
+                        face_count: faceCount
+                    });
+                }
             }
         }
         
     } catch (error) {
         console.error('API communication failed:', error);
-        notifyError(tab, 'Failed to process emotion');
+        if (isProcessing) {
+            notifyError(tab, 'Failed to process emotion');
+        }
     }
 }
 
@@ -309,7 +396,11 @@ function stopProcessing() {
     
     if (processingTab && processingTab.id) {
         sendTabMessage(processingTab.id, { type: 'processStopped' })
-            .catch(() => console.log('Tab already closed'));
+            .catch((error) => {
+                if (!error.message.includes('Extension context invalidated')) {
+                    console.log('Tab may be closed or extension context invalid');
+                }
+            });
     }
     
     processingTab = null;
