@@ -6,8 +6,8 @@ import json
 import os
 from datetime import datetime
 
-from APicalls.Identifyer import identify
-from APicalls.FaceSanitizer import sanitize_image_for_emotion_detection
+from APicalls.Identifyer import identify, identify_multiple_faces
+from APicalls.FaceSanitizer import sanitize_image_for_emotion_detection, sanitize_all_faces_for_emotion_detection
 from APicalls.MeetingTracker import meeting_tracker
 
 # Global iterator counter for screenshot naming
@@ -74,37 +74,56 @@ def upload_screenshot(request):
             for chunk in screenshot_file.chunks():
                 f.write(chunk)
         
-        # Process image: sanitize (crop to face) and detect emotion
-        sanitized_image_path = sanitize_image_for_emotion_detection(file_path)
-        predicted_emotion = identify(sanitized_image_path)
+        # Process image: sanitize all faces and detect emotions for each
+        sanitized_face_paths = sanitize_all_faces_for_emotion_detection(file_path)
         
-        # Track emotion in meeting session
+        if sanitized_face_paths:
+            # Multiple faces detected - get emotions for all
+            all_emotions = identify_multiple_faces(sanitized_face_paths)
+            predicted_emotions = all_emotions
+            
+            # Use the first face's path for primary tracking
+            primary_sanitized_path = sanitized_face_paths[0]
+        else:
+            # No faces detected - fall back to original method
+            primary_sanitized_path = sanitize_image_for_emotion_detection(file_path)
+            single_emotion = identify(primary_sanitized_path)
+            predicted_emotions = [single_emotion]
+            sanitized_face_paths = [primary_sanitized_path]
+        
+        # Track emotions in meeting session
         try:
-            # Extract confidence percentage if available
-            confidence = None
-            if '(' in predicted_emotion and '%' in predicted_emotion:
-                confidence_str = predicted_emotion.split('(')[1].split('%')[0]
-                confidence = float(confidence_str) / 100.0
-            
-            meeting_tracker.add_emotion(
-                emotion=predicted_emotion,
-                confidence=confidence,
-                filename=unique_filename,
-                sanitized_path=sanitized_image_path
-            )
-            
+            # Track each emotion separately
+            for i, emotion in enumerate(predicted_emotions):
+                # Extract confidence percentage if available
+                confidence = None
+                if '(' in emotion and '%' in emotion:
+                    confidence_str = emotion.split('(')[1].split('%')[0]
+                    confidence = float(confidence_str) / 100.0
+                
+                # Use corresponding sanitized path if available
+                sanitized_path = sanitized_face_paths[i] if i < len(sanitized_face_paths) else primary_sanitized_path
+                
+                meeting_tracker.add_emotion(
+                    emotion=emotion,
+                    confidence=confidence,
+                    filename=unique_filename,
+                    sanitized_path=sanitized_path
+                )
         except Exception as e:
             pass  # Continue processing even if session tracking fails
         
-        # Return success response
+        # Return success response with all emotions
         response = JsonResponse({
             'success': True,
             'message': 'Screenshot processed successfully',
-            'emotion': predicted_emotion,
+            'emotions': predicted_emotions,  # Return all emotions
+            'face_count': len(predicted_emotions),  # Number of faces detected
             'session_info': meeting_tracker.get_current_session_info(),
             'data': {
                 'filename': unique_filename,
-                'screenshot_id': screenshot_id
+                'screenshot_id': screenshot_id,
+                'sanitized_paths': sanitized_face_paths
             }
         }, status=200)
         return add_cors_headers(response)

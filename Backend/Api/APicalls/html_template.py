@@ -94,7 +94,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             margin: 2rem auto;
             padding: 0 1.5rem;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: 1fr 1fr; /* Force exactly 2 columns */
+            grid-auto-rows: auto;
             gap: 2rem;
             animation: fadeIn 1.5s ease-out 0.2s forwards;
             opacity: 0;
@@ -198,9 +199,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             height: 35px;
             display: flex;
             align-items: center;
-            padding: 0 0.5rem;
+            padding: 0;
             overflow: hidden;
             box-shadow: inset 0 0 8px var(--shadow-dark);
+            position: relative;
         }
 
         .emotion-frequency-chart .bar-fill {
@@ -208,13 +210,39 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 8px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-start;
             padding: 0 1rem;
             font-weight: 600;
             white-space: nowrap;
-            overflow: hidden;
+            overflow: visible;
             transition: background-color 0.3s ease;
             animation: progressFill 1.5s ease-out forwards;
+            position: relative;
+            min-width: 120px; /* Ensure minimum width for emotion name visibility */
+        }
+
+        .emotion-frequency-chart .emotion-label {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-shadow: 1px 1px 3px var(--shadow-dark);
+            z-index: 2;
+        }
+
+        .emotion-frequency-chart .emotion-percentage {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-shadow: 1px 1px 3px var(--shadow-dark);
+            z-index: 2;
         }
 
         .emotion-frequency-chart .chart-bar:nth-child(1) .bar-fill { background-color: var(--emotion-bored); }
@@ -224,14 +252,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .emotion-frequency-chart .chart-bar:nth-child(5) .bar-fill { background-color: var(--emotion-sad); }
         .emotion-frequency-chart .chart-bar:nth-child(6) .bar-fill { background-color: var(--emotion-angry); }
 
-        .emotion-frequency-chart .bar-fill span {
-            color: var(--text-light);
-            font-size: 0.9rem;
-            text-shadow: 1px 1px 3px var(--shadow-dark);
-        }
-        .emotion-frequency-chart .bar-fill span:last-child {
-            margin-left: auto;
-        }
+
 
         .emotion-timeline {
             position: relative;
@@ -350,6 +371,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 grid-template-columns: 1fr;
                 padding: 0 1rem;
             }
+            /* Override grid positioning for mobile */
+            section {
+                grid-column: span 1 / auto !important;
+            }
             header h1 {
                 font-size: 2.8rem;
             }
@@ -379,12 +404,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
             section {
                 padding: 1.5rem;
+                grid-column: span 1 / auto !important;
             }
             section h2 {
                 font-size: 1.5rem;
             }
-            .emotion-frequency-chart .bar-fill span {
+            .emotion-frequency-chart .emotion-label,
+            .emotion-frequency-chart .emotion-percentage {
                 font-size: 0.8rem;
+            }
+            .emotion-frequency-chart .bar-fill {
+                min-width: 100px;
             }
             .timeline-event {
                 margin-left: 10px;
@@ -411,6 +441,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     </header>
 
     <main>
+        <!-- Row 1: 2 sections side by side -->
+        <section class="detailed-analysis" style="grid-column: span 1 / auto;">
+            <h2>🔍 Detailed Analysis</h2>
+            <p>A comprehensive summary of observed emotional patterns and insights.</p>
+            <ol>
+                {{ANALYSIS_POINTS}}
+            </ol>
+        </section>
+
+        <section class="recommendations" style="grid-column: span 1 / auto;">
+            <h2>💡 Recommendations for Future Meetings</h2>
+            <p>Based on the emotional feedback, consider these actionable steps:</p>
+            <ul>
+                {{RECOMMENDATIONS}}
+            </ul>
+        </section>
+
+        <!-- Row 2: 2 sections side by side -->
         <section class="session-overview" style="grid-column: span 1 / auto;">
             <h2>📊 Session Overview</h2>
             <div style="--delay: 0.1s;">
@@ -439,6 +487,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         </section>
 
+        <!-- Row 3: 1 full-width section for timeline -->
         <section class="emotion-timeline-section" style="grid-column: span 2 / auto;">
             <h2>⏱️ Emotion Timeline</h2>
             <p>A chronological view of emotional shifts throughout the session.</p>
@@ -447,21 +496,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         </section>
 
-        <section class="detailed-analysis" style="grid-column: span 2 / auto;">
-            <h2>🔍 Detailed Analysis</h2>
-            <p>A comprehensive summary of observed emotional patterns and insights.</p>
-            <ol>
-                {{ANALYSIS_POINTS}}
-            </ol>
-        </section>
-
-        <section class="recommendations" style="grid-column: span 2 / auto;">
-            <h2>💡 Recommendations for Future Meetings</h2>
-            <p>Based on the emotional feedback, consider these actionable steps:</p>
-            <ul>
-                {{RECOMMENDATIONS}}
-            </ul>
-        </section>
     </main>
 
     <footer>

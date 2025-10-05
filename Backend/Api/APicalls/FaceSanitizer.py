@@ -237,6 +237,76 @@ def sanitize_image_for_emotion_detection(image_path):
     return sanitizer.sanitize_image(image_path)
 
 
+def sanitize_all_faces_for_emotion_detection(image_path):
+    """
+    Detect and sanitize ALL faces in an image for emotion detection.
+    
+    Args:
+        image_path (str): Path to the input image
+    
+    Returns:
+        list: List of paths to all cropped face images
+    """
+    sanitizer = FaceSanitizer()
+    
+    try:
+        # Read the image
+        image = cv2.imread(image_path)
+        if image is None:
+            return []
+        
+        # Convert to grayscale for face detection
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces
+        faces = sanitizer.face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(30, 30)
+        )
+        
+        if len(faces) == 0:
+            return []
+        
+        # Create sanitized directory
+        original_dir = os.path.dirname(image_path)
+        sanitized_dir = os.path.join(original_dir, "Sanitized")
+        os.makedirs(sanitized_dir, exist_ok=True)
+        
+        cropped_faces = []
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        extension = os.path.splitext(image_path)[1]
+        
+        # Sort faces by size (largest first) to maintain consistency
+        faces_sorted = sorted(faces, key=lambda face: face[2] * face[3], reverse=True)
+        
+        # Crop each detected face
+        for i, (x, y, w, h) in enumerate(faces_sorted):
+            # Add padding around the face
+            padding_x = int(w * 0.2)
+            padding_y = int(h * 0.2)
+            
+            # Calculate crop coordinates with padding
+            x1 = max(0, x - padding_x)
+            y1 = max(0, y - padding_y)
+            x2 = min(image.shape[1], x + w + padding_x)
+            y2 = min(image.shape[0], y + h + padding_y)
+            
+            # Crop the face
+            face_crop = image[y1:y2, x1:x2]
+            
+            # Save the cropped face
+            output_path = os.path.join(sanitized_dir, f"{base_name}_face_{i+1}{extension}")
+            cv2.imwrite(output_path, face_crop)
+            cropped_faces.append(output_path)
+        
+        return cropped_faces
+        
+    except Exception as e:
+        return []
+
+
 # Test function
 def test_face_sanitizer(image_path):
     """

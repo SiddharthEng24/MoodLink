@@ -47,7 +47,9 @@ function createMainPanel() {
         boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
         padding: '20px',
         opacity: '0.95',
-        display: 'flex',
+        display: 'flex', // Ensure proper display value for hide/show
+        visibility: 'visible',
+        pointerEvents: 'auto',
         flexDirection: 'column',
         justifyContent: 'space-between',
         fontFamily: 'Arial, sans-serif'
@@ -167,7 +169,10 @@ function createMessageContainer() {
         fontSize: '14px',
         textAlign: 'center',
         minHeight: '50px',
+        maxHeight: '120px',  // Allow more height for multiple emotions
+        overflowY: 'auto',   // Add scrolling if needed
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '10px',
@@ -399,33 +404,47 @@ function handleToggleError(input, slider, messageContainer, attemptedState) {
  */
 function setupMessageListeners(panel, messageContainer) {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        switch(message.type) {
-            case 'beforeScreenshot':
-                hidePanel(panel);
-                sendResponse({ hidden: true });
-                break;
+        try {
+            switch(message.type) {
+                case 'beforeScreenshot':
+                    // Immediate, aggressive hiding
+                    hidePanel(panel);
+                    // Double-hide with force
+                    panel.style.cssText = 'display: none !important; visibility: hidden !important; opacity: 0 !important; transform: translateX(-9999px) !important; z-index: -9999 !important;';
+                    document.body.style.setProperty('--moodlink-hidden', 'true');
+                    sendResponse({ hidden: true, success: true });
+                    break;
 
-            case 'afterScreenshot':
-                showPanel(panel);
-                sendResponse({ shown: true });
-                break;
+                case 'afterScreenshot':
+                    // Clear the aggressive hiding and restore completely
+                    document.body.style.removeProperty('--moodlink-hidden');
+                    showPanel(panel);
+                    sendResponse({ shown: true, success: true });
+                    break;
 
-            case 'emotionDetected':
-                displayEmotion(messageContainer, message.emotion);
-                sendResponse({ displayed: true });
-                break;
+                case 'emotionDetected':
+                    displayEmotions(messageContainer, message.emotions, message.face_count);
+                    sendResponse({ displayed: true, success: true });
+                    break;
 
-            case 'error':
-                displayError(messageContainer, message.message);
-                sendResponse({ displayed: true });
-                break;
+                case 'error':
+                    displayError(messageContainer, message.message);
+                    sendResponse({ displayed: true, success: true });
+                    break;
 
-            case 'processStopped':
-                resetToOffState(messageContainer);
-                sendResponse({ handled: true });
-                break;
+                case 'processStopped':
+                    resetToOffState(messageContainer);
+                    sendResponse({ handled: true, success: true });
+                    break;
+                    
+                default:
+                    sendResponse({ success: false, error: 'Unknown message type' });
+            }
+        } catch (error) {
+            console.error('Message handling error:', error);
+            sendResponse({ success: false, error: error.message });
         }
-        return true;
+        return true; // Keep message channel open for async response
     });
 }
 
@@ -434,25 +453,80 @@ function setupMessageListeners(panel, messageContainer) {
  */
 
 function hidePanel(panel) {
+    // Complete and immediate hiding using multiple methods
     Object.assign(panel.style, {
-        opacity: '0',
+        display: 'none',
         visibility: 'hidden',
-        pointerEvents: 'none'
+        opacity: '0',
+        transform: 'translateX(1000px)', // Move completely off screen
+        pointerEvents: 'none',
+        zIndex: '-9999' // Send to back
     });
+    
+    // Force immediate DOM update
+    panel.offsetHeight; // Trigger reflow
 }
 
 function showPanel(panel) {
-    requestAnimationFrame(() => {
-        Object.assign(panel.style, {
-            opacity: '0.95',
-            visibility: 'visible',
-            pointerEvents: 'auto'
-        });
+    // Clear the aggressive hiding styles first
+    panel.style.cssText = '';
+    
+    // Restore all original panel styling completely
+    Object.assign(panel.style, {
+        position: 'fixed',
+        bottom: '20px',
+        right: '20px',
+        zIndex: '9999',
+        width: '280px',
+        height: '400px',
+        background: '#1a1a1a',
+        border: '1px solid #333',
+        borderRadius: '12px',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        padding: '20px',
+        opacity: '0.95',
+        display: 'flex',
+        visibility: 'visible',
+        pointerEvents: 'auto',
+        transform: 'translateX(0px)',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        fontFamily: 'Arial, sans-serif'
     });
+    
+    // Force immediate DOM update
+    panel.offsetHeight; // Trigger reflow
 }
 
 function displayEmotion(container, emotion) {
     container.textContent = `Detected: ${emotion.toUpperCase()}`;
+    container.style.color = '#4CAF50';
+    container.style.fontWeight = 'bold';
+}
+
+function displayEmotions(container, emotions, faceCount) {
+    if (!emotions || emotions.length === 0) {
+        container.textContent = 'No emotions detected';
+        container.style.color = '#ff9800';
+        return;
+    }
+    
+    if (emotions.length === 1) {
+        // Single person - use original format
+        const emotion = emotions[0].replace(/^Person \d+: /, ''); // Remove "Person X:" prefix
+        container.textContent = `Detected: ${emotion.toUpperCase()}`;
+    } else {
+        // Multiple people - show count and emotions
+        container.innerHTML = `
+            <div style="font-weight: bold; margin-bottom: 5px;">
+                ${faceCount} People Detected:
+            </div>
+            <div style="font-size: 12px; line-height: 1.3;">
+                ${emotions.map(emotion => emotion.toUpperCase()).join('<br>')}
+            </div>
+        `;
+    }
+    
     container.style.color = '#4CAF50';
     container.style.fontWeight = 'bold';
 }
