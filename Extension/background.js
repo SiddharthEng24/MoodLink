@@ -1,5 +1,6 @@
 // API endpoint - change this to your actual API URL
 const API_ENDPOINT = 'http://localhost:8000/api/';
+const END_SESSION_ENDPOINT = 'http://localhost:8000/api/end-session/';
 let isProcessing = false;
 
 // Listen for messages from the GUI
@@ -9,8 +10,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (isProcessing) {
             startProcessing(sender.tab);
         } else {
-            stopProcessing();
+            // When stopping, end the meeting session
+            endMeetingSession(sender.tab);
         }
+        sendResponse({ success: true });
+    } else if (message.type === 'endSession') {
+        // Handle explicit session end request
+        endMeetingSession(sender.tab);
         sendResponse({ success: true });
     }
 });
@@ -119,4 +125,60 @@ async function startProcessing(tab) {
 
 function stopProcessing() {
     isProcessing = false;
+}
+
+async function endMeetingSession(tab) {
+    try {
+        console.log('Ending meeting session and generating summary...');
+        
+        // Notify GUI that session is ending
+        try {
+            await chrome.tabs.sendMessage(tab.id, {
+                type: 'sessionEnding',
+                message: 'Generating meeting summary...'
+            });
+        } catch (e) {
+            console.log('Could not send sessionEnding message:', e.message);
+        }
+        
+        // Call end session API
+        const response = await fetch(END_SESSION_ENDPOINT, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`End session request failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Session ended successfully:', result);
+        
+        // Notify GUI with summary
+        try {
+            await chrome.tabs.sendMessage(tab.id, {
+                type: 'sessionEnded',
+                summary: result.summary,
+                sessionData: result.session_data,
+                deletedFiles: result.deleted_files
+            });
+        } catch (e) {
+            console.log('Could not send sessionEnded message:', e.message);
+        }
+        
+    } catch (error) {
+        console.error('Error ending meeting session:', error);
+        
+        // Notify GUI of error
+        try {
+            await chrome.tabs.sendMessage(tab.id, {
+                type: 'sessionError',
+                error: error.message
+            });
+        } catch (e) {
+            console.log('Could not send sessionError message:', e.message);
+        }
+    }
 }
