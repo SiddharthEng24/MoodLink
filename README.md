@@ -50,6 +50,6 @@ MoodLink is a **Chrome extension** that analyzes the **facial expressions** of t
 ---
 
 ## 🚀 What’s Next for MoodLink  
-Our next goal is to extend MoodLink’s capabilities to **multi-person video calls**, allowing it to analyze and display **group mood dynamics**. This will make it scalable and even more insightful for teams, classrooms, and virtual collaborations.
+The path forward for this is to be able to personalize the extension a bit more by adding names and other elements that humanize the people on the other side of the screen as opposed to just metrics. This would likely appeal to users more and enable improved perception and interaction with the provided data
 
 ---
