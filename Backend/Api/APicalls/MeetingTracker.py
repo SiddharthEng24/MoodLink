@@ -11,6 +11,7 @@ import shutil
 from datetime import datetime
 from typing import Dict, List, Any
 from APicalls.gemini import gemini
+from APicalls.html_template import HTML_TEMPLATE
 
 
 class MeetingSession:
@@ -82,10 +83,10 @@ class MeetingSession:
     
     def get_meeting_summary_prompt(self) -> str:
         """
-        Generate a prompt for Gemini to create a visually appealing HTML report.
+        Generate a prompt for Gemini to fill in the HTML template with meeting data.
         
         Returns:
-            str: Formatted prompt for Gemini API to generate HTML
+            str: Formatted prompt with template and data to fill
         """
         if not self.emotion_data:
             return "No emotion data collected during this session."
@@ -93,14 +94,14 @@ class MeetingSession:
         # Calculate session duration
         duration_minutes = self._get_elapsed_minutes()
         
-        # Format emotion timeline
+        # Format emotion timeline data
         emotion_timeline = []
         for entry in self.emotion_data:
             emotion_timeline.append(
-                f"• {entry['elapsed_minutes']:.1f}min: {entry['emotion']}"
+                f"{entry['elapsed_minutes']:.1f}min: {entry['emotion']}"
             )
         
-        # Count emotion frequencies
+        # Count emotion frequencies and calculate percentages
         emotion_counts = {}
         for entry in self.emotion_data:
             # Extract base emotion from emoji format (e.g., "😊 happy (85.3%)" -> "happy")
@@ -109,42 +110,57 @@ class MeetingSession:
                 base_emotion = emotion_parts[1].lower()
                 emotion_counts[base_emotion] = emotion_counts.get(base_emotion, 0) + 1
         
+        # Calculate percentages
+        total_readings = len(self.emotion_data)
+        emotion_percentages = {}
+        for emotion, count in emotion_counts.items():
+            emotion_percentages[emotion] = (count / total_readings) * 100
+        
         prompt = f"""
-Create a beautiful, modern HTML report for this meeting emotion analysis. Make it visually stunning with:
-- Modern CSS styling with gradients, shadows, and animations
-- Professional color scheme (dark theme preferred)
-- Interactive charts or visual representations of emotions
-- Responsive design
-- Clean typography and layout
+You must fill in the following HTML template with the provided meeting data. Use EXACTLY this template structure and only replace the placeholder values in {{{{PLACEHOLDER}}}}.
 
-SESSION DATA:
+TEMPLATE:
+{HTML_TEMPLATE}
+
+DATA TO FILL IN:
 - Duration: {duration_minutes:.1f} minutes
-- Total emotion readings: {len(self.emotion_data)}
-- Started: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}
-- Ended: {self.end_time.strftime('%Y-%m-%d %H:%M:%S') if self.end_time else 'Ongoing'}
+- Total Readings: {total_readings}
+- Start Time: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}
+- End Time: {self.end_time.strftime('%Y-%m-%d %H:%M:%S') if self.end_time else 'Ongoing'}
 
-EMOTION TIMELINE:
-{chr(10).join(emotion_timeline)}
+EMOTION CHART BARS:
+Create chart bars for each emotion with percentages and counts:
+""" + chr(10).join([f'- {emotion.title()}: {emotion_percentages[emotion]:.2f}% ({count} times)' for emotion, count in emotion_counts.items()]) + f"""
 
-EMOTION FREQUENCY:
-{chr(10).join([f'• {emotion.title()}: {count} times' for emotion, count in emotion_counts.items()])}
+TIMELINE EVENTS:
+Create timeline events for each emotion reading:
+""" + chr(10).join([f'- {entry["elapsed_minutes"]:.1f}min: {entry["emotion"]}' for entry in self.emotion_data]) + f"""
 
-Please provide a comprehensive meeting summary including:
-1. Overall mood and energy levels throughout the session
-2. Key emotional patterns or trends observed
-3. Potential insights about engagement, stress, or satisfaction
-4. Recommendations for future meetings based on emotional feedback
-5. Notable emotional transitions or moments
+ANALYSIS POINTS:
+Generate 3-4 <li> items analyzing:
+1. Overall mood and energy levels
+2. Key emotional patterns observed  
+3. Insights about engagement/stress/satisfaction
+4. Notable emotional transitions
 
-Generate a complete HTML document with:
-1. Modern CSS styling (embedded in <style> tags)
-2. Professional meeting analysis content
-3. Visual emotion breakdown with percentages
-4. Timeline visualization
-5. Key insights and recommendations
-6. Responsive design for any screen size
+RECOMMENDATIONS:
+Generate 4-5 <li> items with actionable recommendations for future meetings.
 
-Make it look like a premium business analytics report. Return ONLY the complete HTML code, nothing else.
+INSTRUCTIONS:
+1. Use the EXACT template provided above
+2. Replace ALL placeholder values with actual data
+3. Create proper HTML chart bars with correct percentages and animation delays
+4. Create timeline events with proper CSS classes (bored, happy, sad, etc.)
+5. Write professional analysis and recommendations in list format
+6. Return ONLY the complete filled HTML, no other text
+7. Ensure all percentages, counts, and times are accurate
+8. Use appropriate emotion emojis and CSS classes for timeline events
+
+Replace these placeholders in the template:
+- {{{{DURATION}}}} with: {duration_minutes:.1f} minutes
+- {{{{TOTAL_READINGS}}}} with: {total_readings}
+- {{{{START_TIME}}}} with: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}
+- {{{{END_TIME}}}} with: {self.end_time.strftime('%Y-%m-%d %H:%M:%S') if self.end_time else 'Ongoing'}
 """
         return prompt
     
