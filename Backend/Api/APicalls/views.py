@@ -39,11 +39,11 @@ def upload_screenshot(request):
         print(f"Screenshot ID: {iter}, Filename: {unique_filename}")
         
         # Save to Testimages folder only
-        file_path = f"/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages/{unique_filename}"
-        
+        file_path = rf"C:\Users\engin\IdeaProjects\MoodLink\Testimages\{unique_filename}"
+
         # Create directory if it doesn't exist
-        os.makedirs("/Users/alvishprasla/Code/JS/Moodlink/MoodLink/Testimages", exist_ok=True)
-        
+        os.makedirs(r"C:\Users\engin\IdeaProjects\MoodLink\Testimages", exist_ok=True)
+
         # Save the file
         with open(file_path, 'wb') as f:
             for chunk in screenshot_file.chunks():
@@ -100,6 +100,7 @@ def upload_screenshot(request):
             'success': False,
             'error': f'Upload failed: {str(e)}'
         }, status=500)
+<<<<<<< HEAD
 
 
 @csrf_exempt
@@ -171,3 +172,5 @@ def get_session_status(request):
             'error': f'Failed to get session status: {str(e)}'
         }, status=500)
 
+=======
+>>>>>>> refs/remotes/origin/main

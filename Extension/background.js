@@ -2,14 +2,18 @@
 const API_ENDPOINT = 'http://localhost:8000/api/';
 const END_SESSION_ENDPOINT = 'http://localhost:8000/api/end-session/';
 let isProcessing = false;
+let processingTab = null;
 
 // Listen for messages from the GUI
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'toggleProcess') {
         isProcessing = message.enabled;
         if (isProcessing) {
+            processingTab = sender.tab;
             startProcessing(sender.tab);
+            sendResponse({ success: true, status: 'started' });
         } else {
+<<<<<<< HEAD
             // When stopping, end the meeting session
             endMeetingSession(sender.tab);
         }
@@ -18,6 +22,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Handle explicit session end request
         endMeetingSession(sender.tab);
         sendResponse({ success: true });
+=======
+            stopProcessing();
+            sendResponse({ success: true, status: 'stopped' });
+        }
+        return true;
+>>>>>>> refs/remotes/origin/main
     }
 });
 
@@ -43,88 +53,92 @@ chrome.action.onClicked.addListener(async (tab) => {
 async function startProcessing(tab) {
     while (isProcessing) {
         try {
-            // Check if we can capture this tab (avoid chrome:// URLs)
-            if (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:')) {
-                console.log('Skipping chrome:// or restricted URL:', tab.url);
-                await new Promise(resolve => setTimeout(resolve, 5000));
+            if (!tab || !tab.id) {
+                console.error('Invalid tab');
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 continue;
             }
 
-            // Tell GUI to hide
-            try {
-                await chrome.tabs.sendMessage(tab.id, { type: 'beforeScreenshot' });
-            } catch (e) {
-                console.log('Could not send beforeScreenshot message:', e.message);
+            // Check if we can capture this tab (avoid restricted URLs)
+            if (tab.url && (tab.url.startsWith('chrome://') ||
+                tab.url.startsWith('chrome-extension://') ||
+                tab.url.startsWith('edge://') ||
+                tab.url.startsWith('about:'))) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
             }
 
-            // Wait a brief moment for the GUI to hide
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // Quick hide -> capture -> show sequence
+            await chrome.tabs.sendMessage(tab.id, { type: 'beforeScreenshot' });
 
-            // Capture the visible area of the current tab
+            // Capture immediately after GUI is hidden
             const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
                 format: 'png',
-                quality: 90
+                quality: 100
             });
 
-            // Tell GUI to show again
+            // Show GUI immediately after capture
+            chrome.tabs.sendMessage(tab.id, { type: 'afterScreenshot' });
+
             try {
-                await chrome.tabs.sendMessage(tab.id, { type: 'afterScreenshot' });
-            } catch (e) {
-                console.log('Could not send afterScreenshot message:', e.message);
-            }
+                // Convert and send to API
+                const response = await fetch(dataUrl);
+                const blob = await response.blob();
+                const formData = new FormData();
+                formData.append('screenshot', blob, `screenshot-${Date.now()}.png`);
 
-            // Convert dataUrl to blob
-            const response = await fetch(dataUrl);
-            const blob = await response.blob();
-
-            // Create FormData to send the image
-            const formData = new FormData();
-            formData.append('screenshot', blob, `screenshot-${Date.now()}.png`);
-
-            // Send to API
-            const apiResponse = await fetch(API_ENDPOINT, {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!apiResponse.ok) {
-                throw new Error(`API request failed: ${apiResponse.status}`);
-            }
-            
-            // Get the JSON response with emotion data
-            const result = await apiResponse.json();
-            console.log('API Response:', result);
-            
-            // Send emotion to GUI
-            try {
-                await chrome.tabs.sendMessage(tab.id, {
-                    type: 'emotionDetected',
-                    emotion: result.emotion || 'unknown'
+                const apiResponse = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    body: formData
                 });
-                console.log('Emotion sent to GUI:', result.emotion);
-            } catch (e) {
-                console.log('Could not send emotion to GUI:', e.message);
+
+                if (!apiResponse.ok) {
+                    throw new Error(`API responded with status: ${apiResponse.status}`);
+                }
+
+                // Parse the emotion response
+                const result = await apiResponse.json();
+                if (result && result.emotion) {
+                    // Send emotion back to GUI
+                    chrome.tabs.sendMessage(tab.id, {
+                        type: 'emotionDetected',
+                        emotion: result.emotion
+                    });
+                }
+            } catch (apiError) {
+                console.error('API Error:', apiError);
+                chrome.tabs.sendMessage(tab.id, {
+                    type: 'error',
+                    message: 'Failed to process image'
+                });
             }
 
-            // Wait for 5 seconds before next capture
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Shorter interval between captures
+            await new Promise(resolve => setTimeout(resolve, 3000));
         } catch (error) {
-            console.error('Error in processing:', error);
-            
-            // If it's a permission error, stop processing
-            if (error.message.includes('permission') || error.message.includes('chrome://')) {
-                isProcessing = false;
-                break;
+            console.error('Processing Error:', error);
+            if (tab && tab.id) {
+                chrome.tabs.sendMessage(tab.id, {
+                    type: 'error',
+                    message: 'Processing error occurred'
+                });
             }
-            
-            // For other errors, wait and continue
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
 }
 
 function stopProcessing() {
     isProcessing = false;
+    if (processingTab && processingTab.id) {
+        chrome.tabs.sendMessage(processingTab.id, {
+            type: 'processStopped'
+        }).catch(() => {
+            // Ignore any errors if the tab is already closed
+            console.log('Tab already closed or unreachable');
+        });
+    }
+    processingTab = null;
 }
 
 async function endMeetingSession(tab) {
