@@ -50,6 +50,6 @@ MoodLink is a **Chrome extension** that analyzes the **facial expressions** of t
 ---
 
 ## 🚀 What’s Next for MoodLink  
-The path forward for this is to be able to personalize the extension a bit more by adding names and other elements that humanize the people on the other side of the screen as opposed to just metrics. This would likely appeal to users more and enable improved perception and interaction with the provided data
+The path forward for this is to be able to personalize the extension a bit more by adding names and other elements that humanize the people on the other side of the screen as opposed to just metrics. This would likely appeal to users more and enable improved perception and interaction with the provided data. Additionally, making a separate model for speech mannerisms would also be an addition we could strive to achieve.
 
 ---
